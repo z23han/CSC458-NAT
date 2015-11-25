@@ -3,6 +3,7 @@
 #include <assert.h>
 #include "sr_nat.h"
 #include <unistd.h>
+#include <time.h>
 
 int sr_nat_init(struct sr_nat *nat) { /* Initializes the nat */
 
@@ -65,7 +66,14 @@ struct sr_nat_mapping *sr_nat_lookup_external(struct sr_nat *nat,
   pthread_mutex_lock(&(nat->lock));
 
   /* handle lookup here, malloc and assign to copy */
-  struct sr_nat_mapping *copy = NULL;
+  struct sr_nat_mapping *copy = nat->mappings;
+
+  while (copy != NULL) {
+    if ((copy->aux_ext == aux_ext) && (copy->type == type)) {
+        break;
+    }
+    copy = copy->next;
+  }
 
   pthread_mutex_unlock(&(nat->lock));
   return copy;
@@ -79,7 +87,15 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
   pthread_mutex_lock(&(nat->lock));
 
   /* handle lookup here, malloc and assign to copy. */
-  struct sr_nat_mapping *copy = NULL;
+  struct sr_nat_mapping *copy = nat->mappings;
+
+  while (copy != NULL) {
+      if ((copy->ip_int == ip_int) && (copy->aux_int == aux_int) 
+        && (copy->type == type)) {
+          break;
+      }
+      copy = copy->next;
+  }
 
   pthread_mutex_unlock(&(nat->lock));
   return copy;
@@ -94,8 +110,41 @@ struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
   pthread_mutex_lock(&(nat->lock));
 
   /* handle insert here, create a mapping, and then return a copy of it */
-  struct sr_nat_mapping *mapping = NULL;
+  struct sr_nat_mapping *currMapping = nat->mappings;
+  if (currMapping == NULL) {
+    currMapping = (sr_nat_mapping *)malloc(sizeof(sr_nat_mapping));
+    currMapping->type = type;
+    currMapping->ip_int = ip_int;
+    currMapping->ip_ext = 0;
+    currMapping->aux_int = aux_int;
+    currMapping->aux_ext = 0;
+    currMapping->last_updated = time(NULL);
+    currMapping->conns = NULL;
+    currMapping->next = NULL;
+    nat->mappings = currMapping;
+    
+    pthread_mutex_unlock(&(nat->lock));
+    return currMapping;
+  }
+
+  struct sr_nat_mapping *nextMapping = currMapping->next;
+
+  while (nextMapping != NULL) {
+    currMapping = nextMapping;
+    nextMapping = currMapping->next;
+  }
+
+  nextMapping = (sr_nat_mapping *)malloc(sizeof(sr_nat_mapping));
+  nextMapping->type = type;
+  nextMapping->ip_int = ip_int;
+  nextMapping->ip_ext = 0;
+  nextMapping->aux_int = aux_int;
+  nextMapping->aux_ext = 0;
+  nextMapping->last_updated = time(NULL);
+  nextMapping->conns = NULL;
+  nextMapping->next = NULL;
+  currMapping->next = nextMapping;
 
   pthread_mutex_unlock(&(nat->lock));
-  return mapping;
+  return nextMapping;
 }
