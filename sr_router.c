@@ -22,6 +22,7 @@
 #include "sr_protocol.h"
 #include "sr_arpcache.h"
 #include "sr_utils.h"
+#include "sr_nat.h"
 
 
 /*---------------------------------------------------------------------
@@ -459,6 +460,9 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 /* use next_hop_ip->mac mapping in the entry to send the packet */
                 memcpy(eth_hdr->ether_shost, out_if->addr, ETHER_ADDR_LEN);
                 memcpy(eth_hdr->ether_dhost, arp_entry->mac, ETHER_ADDR_LEN);
+
+                /* NAT doing translation here! */
+
                 sr_send_packet(sr, packet, len, out_if->name);
 				printf("Received IP header\n");
 				print_hdr_ip((uint8_t*)ip_hdr);
