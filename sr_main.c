@@ -67,6 +67,9 @@ int main(int argc, char **argv)
     char *logfile = 0;
     struct sr_instance sr;
 
+    /* NAT */
+    int nat_mode = 0;       /* NAT mode is not activated by default */
+
     printf("Using %s\n", VERSION_INFO);
 
     while ((c = getopt(argc, argv, "hs:v:p:u:t:r:l:T:")) != EOF)
@@ -100,6 +103,10 @@ int main(int argc, char **argv)
                 break;
             case 'T':
                 template = optarg;
+                break;
+            /* NAT */
+            case 'n':
+                nat_mode = 1;
                 break;
         } /* switch */
     } /* -- while -- */

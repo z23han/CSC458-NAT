@@ -50,6 +50,10 @@ void sr_init(struct sr_instance* sr)
     pthread_create(&thread, &(sr->attr), sr_arpcache_timeout, sr);
     
     /* Add initialization code here! */
+    if (sr->nat_mode) {
+        struct sr_nat *nat = (struct sr_nat *)malloc(sizeof(struct sr_nat));
+        sr_nat_init(nat);
+    }
 
 } /* -- sr_init -- */
 
@@ -444,40 +448,136 @@ void sr_handle_ippacket(struct sr_instance* sr,
         /* Check the routing table and see if the incoming ip matches the routing table ip, and find LPM router entry */
         struct sr_rt *longest_pref_match = sr_lpm(sr, ip_hdr->ip_dst);
         if (longest_pref_match) {
-			/*fprintf(stderr, "********* Get the longest prefix match *********\n");*/
-            /* check ARP cache */
-            struct sr_if *out_if = sr_get_interface(sr, longest_pref_match->interface);
-			/*print_addr_ip_int(longest_pref_match->gw.s_addr);*/
 
-            struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr); /* ip_hdr->ip_dst */
-         
-			/* If hit, meaning the arp_entry is found */
-            if (arp_entry) {
+            /* if nat_mode, go to NAT */
+            if (sr->nat_mode) {
+                /* check if it is ICMP */
+                if (ip_p == ip_protocol_icmp) {
+                    /* Get the icmp header */
+                    sr_icmp_hdr_t *icmp_hdr = get_icmp_hdr(packet);
+                    /* If it is an outbounding request */
+                    if (icmp_hdr->icmp_type == 8 && strcmp(sr_con_if, "eth1")) {
 
-				/*fprintf(stderr, "************ found the lpm router entry ***********\n");*/
-                /* Send frame to next hop */
-                /* update the eth_hdr source and destination ethernet address */
-                /* use next_hop_ip->mac mapping in the entry to send the packet */
-                memcpy(eth_hdr->ether_shost, out_if->addr, ETHER_ADDR_LEN);
-                memcpy(eth_hdr->ether_dhost, arp_entry->mac, ETHER_ADDR_LEN);
+                        /* Do the NAT */
+                        struct sr_nat_mapping *nat_lookup = sr_nat_lookup_internal(nat, ip_hdr->ip_src, icmp_hdr->icmp_identifier, nat_mapping_icmp);
+                        if (nat_lookup == NULL) {
+                            nat_lookup = sr_nat_insert_mapping(nat, ip_hdr->ip_src, icmp_hdr->icmp_identifier, nat_mapping_icmp);
+                            nat_lookup->ip_ext = sr_get_interface(sr, longest_pref_match->interface)->ip;
+                            nat_lookup->aux_ext = generate_icmp_identifier(nat);
+                        }
 
-                /* NAT doing translation here! */
+                        nat_lookup->last_updated = time(NULL);
+                        icmp_hdr->icmp_identifier = nat_lookup->aux_ext;
+                        ip_hdr->ip_src = nat_lookup->ip_ext;
+                        
+                        icmp_hdr->icmp_sum = 0;
+                        uint16_t new_sum = cksum(icmp_hdr, sizeof(sr_icmp_hdr_t));
+                        icmp_hdr->icmp_sum = new_sum;
+                        ip_hdr->ip_sum = 0;
+                        new_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
+                        ip_hdr->ip_sum = new_sum;
 
-                sr_send_packet(sr, packet, len, out_if->name);
-				printf("Received IP header\n");
-				print_hdr_ip((uint8_t*)ip_hdr);
-                /* free the entry */
-                free(arp_entry);
-                return;
-            } else/* No Hit */ {
-                /* send an ARP request for the next-hop IP */
-                /* add the packet to the queue of packets waiting on this ARP request */
-                /* Add request to ARP queue*/
-                struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_dst, packet, len, out_if->name);
-                /* send ARP request, this is a broadcast */
-                handle_arpreq(arp_req, sr);
-                return;
+                        /* Do the ARP cache check */
+                        struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
+
+                        if (arp_entry) {
+                            sr_send_packet(sr, packet, len, out_if->name);
+                        } else {
+                            /* Add request to ARP queue*/
+                            struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_dst, packet, len, out_if->name);
+                            /* send ARP request, this is a broadcast */
+                            handle_arpreq(arp_req, sr);
+                            return;
+                        }
+
+                    }
+                    /* Else if it is ICMP reply */
+                    else if (icmp_hdr->icmp_type == 0 && strcmp(sr_con_if, "eth2")) {
+                        /* Do the NAT */
+                        struct sr_nat_mapping *nat_lookup = sr_nat_lookup_external(nat, icmp_hdr->icmp_identifier, nat_mapping_icmp);
+                        
+                        if (nat_lookup == NULL) {
+                            nat_lookup = sr_nat_insert_mapping(nat, ip_hdr->ip_src, icmp_hdr->icmp_identifier, nat_mapping_icmp);
+                            nat_lookup->ip_ext = sr_get_interface(sr, longest_pref_match->interface)->ip;
+                            nat_lookup->aux_int = generate_icmp_identifier(nat);
+                        }
+
+                        nat_lookup->last_updated = time(NULL);
+                        icmp_hdr->icmp_identifier = nat_lookup->aux_int;
+                        ip_hdr->ip_src = nat_lookup->ip_ext;
+
+                        icmp_hdr->icmp_sum = 0;
+                        uint16_t new_sum = cksum(icmp_hdr, sizeof(sr_icmp_hdr_t));
+                        icmp_hdr->icmp_sum = new_sum;
+                        ip_hdr->ip_sum = 0;
+                        new_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
+                        ip_hdr->ip_sum = new_sum;
+
+                        /* Do the ARP cache check */
+                        struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
+
+                        if (arp_entry) {
+                            sr_send_packet(sr, packet, len, out_if->name);
+                        } else {
+                            /* Add request to ARP queue*/
+                            struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_dst, packet, len, out_if->name);
+                            /* send ARP request, this is a broadcast */
+                            handle_arpreq(arp_req, sr);
+                            return;
+                        }
+
+                    }
+                    /* Otherwise it is a bad icmp packet */
+                    else {
+                        fprintf(stderr, "Not a ICMP request or reply, bad packet!!\n");
+                        return;
+                    }
+
+                }
+                /* else if it is TCP */
+                else if (ip_p == 0x0006) {
+
+
+                    continue;
+                }
+                else {
+                    fprintf(stderr, "The packet protocol is not correct!\n");
+                    return;
+                }
             }
+            else {
+                /* check ARP cache */
+                struct sr_if *out_if = sr_get_interface(sr, longest_pref_match->interface);
+
+                struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr); /* ip_hdr->ip_dst */
+             
+                /* If hit, meaning the arp_entry is found */
+                if (arp_entry) {
+
+                    /*fprintf(stderr, "************ found the lpm router entry ***********\n");*/
+                    /* Send frame to next hop */
+                    /* update the eth_hdr source and destination ethernet address */
+                    /* use next_hop_ip->mac mapping in the entry to send the packet */
+                    memcpy(eth_hdr->ether_shost, out_if->addr, ETHER_ADDR_LEN);
+                    memcpy(eth_hdr->ether_dhost, arp_entry->mac, ETHER_ADDR_LEN);
+
+                    sr_send_packet(sr, packet, len, out_if->name);
+                    printf("Received IP header\n");
+                    print_hdr_ip((uint8_t*)ip_hdr);
+                    /* free the entry */
+                    free(arp_entry);
+                    return;
+                } else/* No Hit */ {
+                    /* send an ARP request for the next-hop IP */
+                    /* add the packet to the queue of packets waiting on this ARP request */
+                    /* Add request to ARP queue*/
+                    struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_dst, packet, len, out_if->name);
+                    /* send ARP request, this is a broadcast */
+                    handle_arpreq(arp_req, sr);
+                    return;
+                }
+            }
+
         } else /* if not matched */ {
             /* Send ICMP net unreachable */
 			printf("--------------- Net Unreachable ---------------\n");

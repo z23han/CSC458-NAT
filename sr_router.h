@@ -60,6 +60,9 @@ struct sr_instance
     struct sr_arpcache cache;   /* ARP cache */
     pthread_attr_t attr;
     FILE* logfile;
+
+    /* for NAT */
+    int nat_mode;
 };
 
 /* -- sr_main.c -- */
