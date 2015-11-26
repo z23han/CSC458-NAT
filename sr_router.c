@@ -456,35 +456,42 @@ void sr_handle_ippacket(struct sr_instance* sr,
                     /* Get the icmp header */
                     sr_icmp_hdr_t *icmp_hdr = get_icmp_hdr(packet);
                     /* If it is an outbounding request */
-                    if (icmp_hdr->icmp_type == 8 && strcmp(sr_con_if, "eth1")) {
+                    if (icmp_hdr->icmp_type == 8 && strcmp(sr_con_if->name, "eth1")) {
+
+                        /* outbound interface */
+                        struct sr_if *ext_if = sr_get_interface(sr, longest_pref_match->interface);
 
                         /* Do the NAT */
+                        /* look up to find out if nat has src_ip stored */
                         struct sr_nat_mapping *nat_lookup = sr_nat_lookup_internal(nat, ip_hdr->ip_src, icmp_hdr->icmp_identifier, nat_mapping_icmp);
+                        /* if not stored, insert it into nat */
                         if (nat_lookup == NULL) {
+                            /* generate a lookup and insert into nat */
                             nat_lookup = sr_nat_insert_mapping(nat, ip_hdr->ip_src, icmp_hdr->icmp_identifier, nat_mapping_icmp);
-                            nat_lookup->ip_ext = sr_get_interface(sr, longest_pref_match->interface)->ip;
+                            nat_lookup->ip_ext = ext_if->ip;
                             nat_lookup->aux_ext = generate_icmp_identifier(nat);
                         }
-
                         nat_lookup->last_updated = time(NULL);
-                        icmp_hdr->icmp_identifier = nat_lookup->aux_ext;
+
+                        /* Update ip */
                         ip_hdr->ip_src = nat_lookup->ip_ext;
-                        
+                        ip_hdr->ip_sum = 0
+                        ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
+
+                        /* Update icmp */
+                        icmp_hdr->icmp_identifier = nat_lookup->aux_ext;
+                        unsigned int icmp_whole_size = len - IP_PACKET_LEN;
                         icmp_hdr->icmp_sum = 0;
-                        uint16_t new_sum = cksum(icmp_hdr, sizeof(sr_icmp_hdr_t));
-                        icmp_hdr->icmp_sum = new_sum;
-                        ip_hdr->ip_sum = 0;
-                        new_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
-                        ip_hdr->ip_sum = new_sum;
+                        icmp_hdr->icmp_sum = cksum(icmp_hdr, icmp_whole_size);
 
                         /* Do the ARP cache check */
                         struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
 
                         if (arp_entry) {
-                            sr_send_packet(sr, packet, len, out_if->name);
+                            sr_send_packet(sr, packet, len, ext_if->name);
                         } else {
                             /* Add request to ARP queue*/
-                            struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_dst, packet, len, out_if->name);
+                            struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_dst, packet, len, ext_if->name);
                             /* send ARP request, this is a broadcast */
                             handle_arpreq(arp_req, sr);
                             return;
@@ -492,26 +499,30 @@ void sr_handle_ippacket(struct sr_instance* sr,
 
                     }
                     /* Else if it is ICMP reply */
-                    else if (icmp_hdr->icmp_type == 0 && strcmp(sr_con_if, "eth2")) {
+                    else if (icmp_hdr->icmp_type == 0 && strcmp(sr_con_if->name, "eth2")) {
                         /* Do the NAT */
                         struct sr_nat_mapping *nat_lookup = sr_nat_lookup_external(nat, icmp_hdr->icmp_identifier, nat_mapping_icmp);
                         
                         if (nat_lookup == NULL) {
-                            nat_lookup = sr_nat_insert_mapping(nat, ip_hdr->ip_src, icmp_hdr->icmp_identifier, nat_mapping_icmp);
-                            nat_lookup->ip_ext = sr_get_interface(sr, longest_pref_match->interface)->ip;
-                            nat_lookup->aux_int = generate_icmp_identifier(nat);
+                            fprintf(stderr, "No mapping for ICMP echo reply\n");
+                            return;
                         }
 
+                        uint32_t ip_int = nat_lookup->ip_int;
+                        uint32_t ip_ext = nat_lookup->ip_ext;
+                        uint16_t aux_int = nat_lookup->aux_int;
                         nat_lookup->last_updated = time(NULL);
-                        icmp_hdr->icmp_identifier = nat_lookup->aux_int;
-                        ip_hdr->ip_src = nat_lookup->ip_ext;
 
+                        /* Update ip */
+                        ip_hdr->ip_dst = ;
+                        ip_hdr->ip_sum = 0
+                        ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
+
+                        /* Update icmp */
+                        icmp_hdr->icmp_identifier = aux_int;
+                        unsigned int icmp_whole_size = len - IP_PACKET_LEN;
                         icmp_hdr->icmp_sum = 0;
-                        uint16_t new_sum = cksum(icmp_hdr, sizeof(sr_icmp_hdr_t));
-                        icmp_hdr->icmp_sum = new_sum;
-                        ip_hdr->ip_sum = 0;
-                        new_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
-                        ip_hdr->ip_sum = new_sum;
+                        icmp_hdr->icmp_sum = cksum(icmp_hdr, icmp_whole_size);;
 
                         /* Do the ARP cache check */
                         struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
