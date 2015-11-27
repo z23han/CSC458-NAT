@@ -2,6 +2,13 @@
 #ifndef SR_NAT_TABLE_H
 #define SR_NAT_TABLE_H
 
+#define MAX_16B_UINT 65535
+#define MIN_PORT 1024
+#define TOTAL_PORTS MAX_16B_UINT - MIN_PORT
+#define MIN_ICMP_IDENTIFIER 1
+#define TOTAL_ICMP_IDENTIFIERS MAX_16B_UINT - MIN_ICMP_IDENTIFIER
+
+
 #include <inttypes.h>
 #include <time.h>
 #include <pthread.h>
@@ -38,6 +45,11 @@ struct sr_nat {
   pthread_mutexattr_t attr;
   pthread_attr_t thread_attr;
   pthread_t thread;
+
+  /* available port counter */
+  uint16_t port_counter;
+  /* available ICMP identifier counter */
+  uint16_t identifier_counter;
 };
 
 
@@ -60,5 +72,7 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
 struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
   uint32_t ip_int, uint16_t aux_int, sr_nat_mapping_type type );
 
+int generate_icmp_identifier(struct sr_nat *nat);
+int generate_port(struct sr_nat *nat);
 
 #endif
