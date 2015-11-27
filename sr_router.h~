@@ -30,10 +30,10 @@
 #define INIT_TTL 255
 #define PACKET_DUMP_SIZE 1024
 #define ETHER_PACKET_LEN sizeof(sr_ethernet_hdr_t)
-#define IP_PACKET_LEN (sizeof(sr_ethernet_hdr_t)+sizeof(sr_ip_hdr_t))
-#define ARP_PACKET_LEN (sizeof(sr_ethernet_hdr_t)+sizeof(sr_arp_hdr_t))
-#define ICMP_PACKET_LEN (sizeof(sr_ethernet_hdr_t)+sizeof(sr_ip_hdr_t)+sizeof(sr_icmp_hdr_t))
-#define ICMP_T3_PACKET_LEN (sizeof(sr_ethernet_hdr_t)+sizeof(sr_ip_hdr_t)+sizeof(sr_icmp_t3_hdr_t))
+#define IP_PACKET_LEN sizeof(sr_ethernet_hdr_t)+sizeof(sr_ip_hdr_t)
+#define ARP_PACKET_LEN sizeof(sr_ethernet_hdr_t)+sizeof(sr_arp_hdr_t)
+#define ICMP_PACKET_LEN sizeof(sr_ethernet_hdr_t)+sizeof(sr_ip_hdr_t)+sizeof(sr_icmp_hdr_t)
+#define ICMP_T3_PACKET_LEN sizeof(sr_ethernet_hdr_t)+sizeof(sr_ip_hdr_t)+sizeof(sr_icmp_t3_hdr_t)
 
 
 /* forward declare */
