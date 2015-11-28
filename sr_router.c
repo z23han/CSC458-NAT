@@ -277,7 +277,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
 
         /* ********sent to me and coming from internal ******** */
         /* ************send the packet back************ */
-        if (sr_iface && strcmp(sr_con_if->name, "eth1") == 0) {
+        if (sr_iface && (strcmp(sr_con_if->name, "eth1") == 0 || strcmp(sr_con_if->name, "eth2") == 0)) {
 
             /* if it is icmp */
             if (ip_p == ip_protocol_icmp) {
