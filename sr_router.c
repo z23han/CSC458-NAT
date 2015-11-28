@@ -49,6 +49,11 @@ void sr_init(struct sr_instance* sr)
     pthread_create(&thread, &(sr->attr), sr_arpcache_timeout, sr);
     
     /* Add initialization code here! */
+    struct sr_nat *nat = (sr_nat *)malloc(sizeof(sr_nat));
+    if (sr_nat_init(struct sr_nat *nat) != 0) {
+        fprintf(stderr, "nat initialization error!\n");
+        return;
+    }
 
 } /* -- sr_init -- */
 
@@ -267,67 +272,113 @@ void sr_handle_ippacket(struct sr_instance* sr,
     /* ****************** nat-mode ********************* */
     if (sr->nat_mode) {
 
-        /* ********sent to my myself and is coming from internal******** */
+        /* ********sent to me and coming from internal ******** */
+        /* ************send the packet back************ */
         if (sr_iface && strcmp(sr_con_if->name, "eth1")) {
+
             /* if it is icmp */
             if (ip_p == ip_protocol_icmp) {
+                /* get icmp header */
+                sr_icmp_hdr_t *icmp_hdr = get_icmp_hdr(packet);
+
+                /* longest prefix match to find the interface */
                 struct sr_rt *longest_pref_match = sr_lpm(sr, ip_hdr->ip_src);
 
-                if (longest_pref_match) {
-                    struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
-                    struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
+                if (longest_pref_match == NULL) {
+                    fprintf(stderr, "Longest prefix match error! Drop the packet!\n");
+                    return;
+                }
 
-                    if (arp_entry) {
-                        /* modify ethernet header */
-                        memcpy(eth_hdr->ether_dhost, eth_hdr->ether_shost, ETHER_ADDR_LEN);
-                        memcpy(eth_hdr->ether_shost, out_iface->addr, ETHER_ADDR_LEN);
+                struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
 
-                        /* modify ip header */
-                        ip_hdr->ip_off = htons(0b0100000000000000);
-                        ip_hdr->ip_ttl = 100;
-                        uint32_t temp = ip_hdr->ip_src;
-                        ip_hdr->ip_src = ip_hdr->ip_dst;
-                        ip_hdr->ip_dst = temp;
-                        ip_hdr->ip_sum = 0;
-                        ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
+                /* modify ethernet header */
+                memcpy(eth_hdr->ether_dhost, eth_hdr->ether_shost, ETHER_ADDR_LEN);
+                memcpy(eth_hdr->ether_shost, out_iface->addr, ETHER_ADDR_LEN);
 
-                        /* modify icmp header */
-                        unsigned int icmp_whole_size = len - IP_PACKET_LEN;
-                        icmp_hdr->icmp_type = 0;
-                        icmp_hdr->icmp_code = 0;
-                        icmp_hdr->icmp_sum = 0;
-                        icmp_hdr->icmp_sum = cksum(icmp_hdr, icmp_whole_size);
+                /* modify ip header */
+                ip_hdr->ip_off = htons(0b0100000000000000);
+                ip_hdr->ip_ttl = 100;
+                uint32_t temp = ip_hdr->ip_src;
+                ip_hdr->ip_src = ip_hdr->ip_dst;
+                ip_hdr->ip_dst = temp;
+                ip_hdr->ip_sum = 0;
+                ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
 
-                        sr_send_packet(sr, packet, len, out_iface->name);
-                        return;
-                    } else {
-                        /* modify ethernet header */
-                        memcpy(eth_hdr->ether_dhost, eth_hdr->ether_shost, ETHER_ADDR_LEN);
-                        memcpy(eth_hdr->ether_shost, out_iface->addr, ETHER_ADDR_LEN);
+                /* modify icmp header */
+                unsigned int icmp_whole_size = len - IP_PACKET_LEN;
+                icmp_hdr->icmp_type = 0;
+                icmp_hdr->icmp_code = 0;
+                icmp_hdr->icmp_sum = 0;
+                icmp_hdr->icmp_sum = cksum(icmp_hdr, icmp_whole_size);
 
-                        /* modify ip header */
-                        ip_hdr->ip_off = htons(0b0100000000000000);
-                        ip_hdr->ip_ttl = 100;
-                        uint32_t temp = ip_hdr->ip_src;
-                        ip_hdr->ip_src = ip_hdr->ip_dst;
-                        ip_hdr->ip_dst = temp;
-                        ip_hdr->ip_sum = 0;
-                        ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
+                /* check the arp cache */
+                struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
 
-                        /* modify icmp header */
-                        unsigned int icmp_whole_size = len - IP_PACKET_LEN;
-                        icmp_hdr->icmp_type = 0;
-                        icmp_hdr->icmp_code = 0;
-                        icmp_hdr->icmp_sum = 0;
-                        icmp_hdr->icmp_sum = cksum(icmp_hdr, icmp_whole_size);
-
-                        /* add the arp request and send arp broadcast */
-                        struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_dst, packet, len, out_iface->name);
-                        handle_arpreq(arp_req, sr);
-                        return;
-                    }
+                if (arp_entry) {
+                    sr_send_packet(sr, packet, len, out_iface->name);
+                    return;
                 } else {
+                    struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_dst, packet, len, out_iface->name);
+                    handle_arpreq(arp_req, sr);
+                    return;
+                }
+            }
+            /* else if it is tcp */
+            else if (ip_p == 0x0006) {
+                continue;
+            }
+            /* else drop the packet */
+            else {
+                fprintf(stderr, "Not an icmp or tcp packet! Drop the packet!\n");
+                return;
+            }
+        }
+        /* ********not sent to me and is coming from internal******** */
+        /* ************check the nat and forward the packet************ */
+        else if (sr_iface == NULL && strcmp(sr_con_if->name, "eth1")) {
+            /* if it is icmp */
+            if (ip_p == ip_protocol_icmp) {
+                /* get icmp header */
+                sr_icmp_hdr_t *icmp_hdr = get_icmp_hdr(packet);
+                /* check the internal nat */
+                struct sr_nat_mapping *nat_lookup = sr_nat_lookup_internal(nat, ip_hdr->ip_src, icmp_hdr->icmp_identifier, nat_mapping_icmp);
 
+                /* longest prefix match to find the interface */
+                struct sr_rt *longest_pref_match = sr_lpm(sr, ip_hdr->ip_dst);
+                if (longest_pref_match == NULL) {
+                    fprintf(stderr, "cannot find eth2, longest_pref_match error! Drop the packet!\n");
+                    return;
+                }
+
+                /* check the nat, or insert new one into nat */
+                if (nat_lookup == NULL) {
+                    nat_lookup = sr_nat_insert_mapping(nat, ip_hdr->ip_src, icmp_hdr->icmp_identifier, nat_mapping_icmp);
+                    nat_lookup->ip_ext = out_iface->ip;
+                    nat_lookup->aux_int = generate_icmp_identifier(nat);
+                }
+                nat_lookup->last_updated = time(NULL);
+
+                /* modify ip */
+                ip_hdr->ip_src = nat_lookup->ip_ext;
+                ip_hdr->ip_sum = 0;
+                ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
+
+                /* modify icmp */
+                icmp_hdr->icmp_identifier = nat_lookup->aux_int;
+                unsigned int icmp_whole_size = len - IP_PACKET_LEN;
+                icmp_hdr->icmp_sum = 0;
+                icmp_hdr->icmp_sum = cksum(icmp_hdr, icmp_whole_size);
+
+                /* check the arp cache */
+                struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
+
+                if (arp_entry) {
+                    sr_send_packet(sr, packet, len, out_iface->name);
+                    return;
+                } else {
+                    struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_dst, packet, len, out_iface->name);
+                    handle_arpreq(arp_req, sr);
+                    return;
                 }
             }
             /* else if it is tcp */
@@ -341,43 +392,105 @@ void sr_handle_ippacket(struct sr_instance* sr,
             }
         }
         
-        /* ********sent to myself and is coming from external******** */        
-        else if (sr_iface && strcmp(sr_con_if->name, "eth2")) {
+        /* ********sent to me and is coming from external******** */ 
+        else if (sr_iface == sr_con_if && strcmp(sr_con_if->name, "eth2")) {
             /* if it is icmp */
             if (ip_p == ip_protocol_icmp) {
-                continue;
-            }
-            /* else if it is tcp */
-            else if (ip_p == 0x0006) {
-                continue;
-            }
-            /* else drop the packet */
-            else {
-                fprintf(stderr, "Not an icmp or tcp packet! Drop the packet!\n");
-                return;
-            }
-        }
-        /* ********not sent to me and is coming from internal******** */
-        else if (sr_iface == NULL && strcmp(sr_con_if->name, "eth1")) {
-            /* if it is icmp */
-            if (ip_p == ip_protocol_icmp) {
-                continue;
-            }
-            /* else if it is tcp */
-            else if (ip_p == 0x0006) {
-                continue;
-            }
-            /* else drop the packet */
-            else {
-                fprintf(stderr, "Not an icmp or tcp packet! Drop the packet!\n");
-                return;
-            }
-        }
-        /* ********not sent to me and is coming from external******** */
-        else if (sr_iface == NULL && strcmp(sr_con_if->name, "eth2")) {
-            /* if it is icmp */
-            if (ip_p == ip_protocol_icmp) {
-                continue;
+                /* get icmp header */
+                sr_icmp_hdr_t *icmp_hdr = get_icmp_hdr(packet);
+
+                struct sr_nat_mapping *nat_lookup = sr_nat_lookup_external(nat, icmp_hdr->icmp_identifier, nat_mapping_icmp);
+                /* check the nat_lookup */
+                if (nat_lookup != NULL) {
+                    /* Update nat */
+                    uint32_t ip_int = nat_lookup->ip_int;
+                    uint32_t ip_ext = nat_lookup->ip_ext;
+                    uint16_t aux_int = nat_lookup->aux_int;
+                    nat_lookup->last_updated = time(NULL);
+
+                    /* check the dst ip equals to nat external ip */
+                    if (ip_ext != ip_hdr->ip_dst) {
+                        fprintf(stderr, "external ip is not equal to ip dst! Drop the packet!\n");
+                        return;
+                    }
+
+                    /* longest prefix match to find the interface */
+                    struct sr_rt *longest_pref_match = sr_lpm(sr, ip_int);
+                    if (longest_pref_match == NULL) {
+                        fprintf(stderr, "cannot find eth1, longest_pref_match error! Drop the packet!\n");
+                        return;
+                    }
+
+                    struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
+
+                    /* modify ip header */
+                    ip_hdr->ip_dst = ip_int;
+                    ip_hdr->ip_sum = 0;
+                    ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
+
+                    /* modify icmp */
+                    icmp_hdr->icmp_identifier = aux_int;
+                    unsigned int icmp_whole_size = len - IP_PACKET_LEN;
+                    icmp_hdr->icmp_sum = 0;
+                    icmp_hdr->icmp_sum = cksum(icmp_hdr, icmp_whole_size);
+
+                    /* check the arp cache */
+                    struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
+
+                    if (arp_entry) {
+                        sr_send_packet(sr, packet, len, out_iface->name);
+                        return;
+                    } else {
+                        struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_dst, packet, len, out_iface->name);
+                        handle_arpreq(arp_req, sr);
+                        return;
+                    }
+                } 
+                /* if not in the mapping, send back the packet */
+                else {
+                    /* longest prefix match to find the return interface */
+                    struct sr_rt *longest_pref_match = sr_lpm(sr, ip_hdr->ip_src);
+
+                    if (longest_pref_match == NULL) {
+                        fprintf(stderr, "cannot find eth2, longest_pref_match error! Drop the packet!\n");
+                        return;
+                    }
+
+                    struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
+
+                    /* modify ethernet header */
+                    memcpy(eth_hdr->ether_dhost, eth_hdr->ether_shost, ETHER_ADDR_LEN);
+                    memcpy(eth_hdr->ether_shost, out_iface->addr, ETHER_ADDR_LEN);
+
+                    /* modify ip header */
+                    ip_hdr->ip_off = htons(0b0100000000000000);
+                    ip_hdr->ip_ttl = 100;
+                    uint32_t temp = ip_hdr->ip_src;
+                    ip_hdr->ip_src = ip_hdr->ip_dst;
+                    ip_hdr->ip_dst = temp;
+                    ip_hdr->ip_sum = 0;
+                    ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
+
+                    /* modify icmp header */
+                    unsigned int icmp_whole_size = len - IP_PACKET_LEN;
+                    icmp_hdr->icmp_type = 0;
+                    icmp_hdr->icmp_code = 0;
+                    icmp_hdr->icmp_sum = 0;
+                    icmp_hdr->icmp_sum = cksum(icmp_hdr, icmp_whole_size);
+
+                    /* check the arp cache */
+                    struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
+
+                    if (arp_entry) {
+                        sr_send_packet(sr, packet, len, out_iface->name);
+                        return;
+                    } else {
+                        struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_dst, packet, len, out_iface->name);
+                        handle_arpreq(arp_req, sr);
+                        return;
+                    }
+                }
+
             }
             /* else if it is tcp */
             else if (ip_p == 0x0006) {
