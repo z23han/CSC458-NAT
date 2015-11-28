@@ -67,6 +67,9 @@ int main(int argc, char **argv)
     char *logfile = 0;
     struct sr_instance sr;
 
+    struct sr_nat *nat = (struct sr_nat *)malloc(sizeof(struct sr_nat));
+    sr.nat = nat;
+
     /* NAT */
     sr.nat_mode = 0;       /* NAT mode is not activated by default */
 

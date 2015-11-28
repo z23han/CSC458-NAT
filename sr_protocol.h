@@ -185,6 +185,44 @@ struct sr_arp_hdr
 } __attribute__ ((packed)) ;
 typedef struct sr_arp_hdr sr_arp_hdr_t;
 
+
+/* Structure of tcp protocol */
+struct sr_tcp_hdr {
+    unsigned uint16_t src_port;
+    unsigned uint16_t dst_port;
+    unsigned uint32_t seq_number;
+    unsigned uint32_t ack_number;
+    unsigned uint8_t data_offset_reserved_ecn;
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+    unsigned int fin:1;     /* no more data from sender */
+    unsigned int syn:1;     /* synchronize sequence number */
+    unsigned int rst:1;     /* reset the connection */
+    unsigned int psh:1;     /* push function */
+
+    unsigned int ack:1;     /* indicate acknowledge field is significant */
+    unsigned int urg:1;     /* indicate urgent pointer field is significant */
+    unsigned int ece:1;     /* ECN-Echo, depending on SYN flag */
+    unsigned int cwr:1;     /* congestion window reduced flag */
+#elif __BYTE_ORDER == __BIG_ENDIAN
+    unsigned int cwr:1;     /* congestion window reduced flag */
+    unsigned int ece:1;     /* ECN-Echo, depending on SYN flag */
+    unsigned int urg:1;     /* indicate urgent pointer field is significant */
+    unsigned int ack:1;     /* indicate acknowledge field is significant */
+
+    unsigned int psh:1;     /* push function */
+    unsigned int rst:1;     /* reset the connection */
+    unsigned int syn:1;     /* synchronize sequence number */
+    unsigned int fin:1;     /* no more data from sender */
+#else
+#error "Byte ordering ot specified " 
+#endif 
+    unsigned uint16_t window_size;
+    unsigned uint16_t tcp_sum;
+    unsigned uint16_t urg_number;
+}__attribute__ ((packed)) ;
+typedef struct sr_tcp_hdr sr_tcp_hdr_t;
+
+
 #define sr_IFACE_NAMELEN 32
 
 #endif /* -- SR_PROTOCOL_H -- */
