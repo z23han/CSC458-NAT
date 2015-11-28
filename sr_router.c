@@ -267,11 +267,80 @@ void sr_handle_ippacket(struct sr_instance* sr,
     /* ****************** nat-mode ********************* */
     if (sr->nat_mode) {
 
-        /* if the (ip, port) is in the nat */
+        /* ********sent to my myself and is coming from internal******** */
+        if (sr_iface && strcmp(sr_con_if->name, "eth1")) {
+            /* if it is icmp */
+            if (ip_p == ip_protocol_icmp) {
+                struct sr_rt *longest_pref_match = sr_lpm(sr, ip_hdr->ip_src);
+
+                if (longest_pref_match) {
+                    struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
+                    struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
+
+                    if (arp_entry) {
+                        /* modify ethernet header */
+                        memcpy(eth_hdr->ether_dhost, eth_hdr->ether_shost, ETHER_ADDR_LEN);
+                        memcpy(eth_hdr->ether_shost, out_iface->addr, ETHER_ADDR_LEN);
+
+                        /* modify ip header */
+                        ip_hdr->ip_off = htons(0b0100000000000000);
+                        ip_hdr->ip_ttl = 100;
+                        ip_hdr->ip_dst = ip_hdr->ip_src;
+                        ip_hdr->ip_src = out_iface->ip;
+                        ip_hdr->ip_sum = 0;
+                        ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
+
+                        /* modify icmp header */
+                        unsigned int icmp_whole_size = len - IP_PACKET_LEN;
+                        icmp_hdr->icmp_type = 0;
+                        icmp_hdr->icmp_code = 0;
+                        icmp_hdr->icmp_sum = 0;
+                        icmp_hdr->icmp_sum = cksum(icmp_hdr, icmp_whole_size);
+
+                        sr_send_packet(sr, packet, len, out_iface->name);
+                        return;
+                    } else {
+                        /* modify ethernet header */
+                        memcpy(eth_hdr->ether_dhost, eth_hdr->ether_shost, ETHER_ADDR_LEN);
+                        memcpy(eth_hdr->ether_shost, out_iface->addr, ETHER_ADDR_LEN);
+
+                        /* modify ip header */
+                        ip_hdr->ip_off = htons(0b0100000000000000);
+                        ip_hdr->ip_ttl = 100;
+                        ip_hdr->ip_dst = ip_hdr->ip_src;
+                        ip_hdr->ip_src = out_iface->ip;
+                        ip_hdr->ip_sum = 0;
+                        ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
+
+                        /* modify icmp header */
+                        unsigned int icmp_whole_size = len - IP_PACKET_LEN;
+                        icmp_hdr->icmp_type = 0;
+                        icmp_hdr->icmp_code = 0;
+                        icmp_hdr->icmp_sum = 0;
+                        icmp_hdr->icmp_sum = cksum(icmp_hdr, icmp_whole_size);
+
+                        /* add the arp request and send arp broadcast */
+                        struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_dst, packet, len, out_iface->name);
+                        handle_arpreq(arp_req, sr);
+                        return;
+                    }
+                } else {
+
+                }
+            }
+            /* else if it is tcp */
+            else if (ip_p == 0x0006) {
+                continue;
+            }
+            /* else drop the packet */
+            else {
+                fprintf(stderr, "Not an icmp or tcp packet! Drop the packet!\n");
+                return;
+            }
+        }
         
-        
-        /* if the packet is sent to myself */        
-        if (sr_iface) {
+        /* ********sent to myself and is coming from external******** */        
+        else if (sr_iface && strcmp(sr_con_if->name, "eth2")) {
             /* if it is icmp */
             if (ip_p == ip_protocol_icmp) {
                 continue;
@@ -286,8 +355,8 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 return;
             }
         }
-        /* else it is not sent to me */
-        else {
+        /* ********not sent to me and is coming from internal******** */
+        else if (sr_iface == NULL && strcmp(sr_con_if->name, "eth1")) {
             /* if it is icmp */
             if (ip_p == ip_protocol_icmp) {
                 continue;
@@ -301,6 +370,27 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 fprintf(stderr, "Not an icmp or tcp packet! Drop the packet!\n");
                 return;
             }
+        }
+        /* ********not sent to me and is coming from external******** */
+        else if (sr_iface == NULL && strcmp(sr_con_if->name, "eth2")) {
+            /* if it is icmp */
+            if (ip_p == ip_protocol_icmp) {
+                continue;
+            }
+            /* else if it is tcp */
+            else if (ip_p == 0x0006) {
+                continue;
+            }
+            /* else drop the packet */
+            else {
+                fprintf(stderr, "Not an icmp or tcp packet! Drop the packet!\n");
+                return;
+            }
+        }
+        /* ********otherwise it is wrong******** */
+        else {
+            fprintf(stderr, "Cannot find the interface!! Drop the packet!\n");
+            return;
         }
 
     }
