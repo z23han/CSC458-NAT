@@ -63,6 +63,7 @@ struct sr_instance
 
     /* for NAT */
     int nat_mode;
+    struct sr_nat_mapping *nat;
 };
 
 /* -- sr_main.c -- */

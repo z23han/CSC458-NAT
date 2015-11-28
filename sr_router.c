@@ -49,8 +49,7 @@ void sr_init(struct sr_instance* sr)
     pthread_create(&thread, &(sr->attr), sr_arpcache_timeout, sr);
     
     /* Add initialization code here! */
-    struct sr_nat *nat = (struct sr_nat *)malloc(sizeof(struct sr_nat));
-    if (sr_nat_init(nat) != 0) {
+    if (sr_nat_init(&(sr->nat)) != 0) {
         fprintf(stderr, "nat initialization error!\n");
         return;
     }
@@ -268,6 +267,9 @@ void sr_handle_ippacket(struct sr_instance* sr,
     }
     /* Get the protocol from IP */
     uint8_t ip_p = ip_hdr->ip_p;
+
+    /* get the nat */
+    struct sr_nat_mapping *nat = sr->nat;
 
     /* ****************** nat-mode ********************* */
     if (sr->nat_mode) {
