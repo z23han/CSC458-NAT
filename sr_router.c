@@ -49,8 +49,8 @@ void sr_init(struct sr_instance* sr)
     pthread_create(&thread, &(sr->attr), sr_arpcache_timeout, sr);
     
     /* Add initialization code here! */
-    struct sr_nat *nat = (sr_nat *)malloc(sizeof(sr_nat));
-    if (sr_nat_init(struct sr_nat *nat) != 0) {
+    struct sr_nat *nat = (struct sr_nat *)malloc(sizeof(struct sr_nat));
+    if (sr_nat_init(nat) != 0) {
         fprintf(stderr, "nat initialization error!\n");
         return;
     }
@@ -325,7 +325,8 @@ void sr_handle_ippacket(struct sr_instance* sr,
             }
             /* else if it is tcp */
             else if (ip_p == 0x0006) {
-                continue;
+                printf("tcp protocol!!!\n");
+				return;
             }
             /* else drop the packet */
             else {
@@ -383,7 +384,8 @@ void sr_handle_ippacket(struct sr_instance* sr,
             }
             /* else if it is tcp */
             else if (ip_p == 0x0006) {
-                continue;
+                printf("tcp protocol!!!\n");
+				return;
             }
             /* else drop the packet */
             else {
@@ -490,11 +492,12 @@ void sr_handle_ippacket(struct sr_instance* sr,
                         return;
                     }
                 }
-
+ 
             }
             /* else if it is tcp */
             else if (ip_p == 0x0006) {
-                continue;
+                printf("tcp protocol!!!\n");
+				return;
             }
             /* else drop the packet */
             else {
