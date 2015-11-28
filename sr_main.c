@@ -68,7 +68,7 @@ int main(int argc, char **argv)
     struct sr_instance sr;
 
     /* NAT */
-    int nat_mode = 0;       /* NAT mode is not activated by default */
+    sr.nat_mode = 0;       /* NAT mode is not activated by default */
 
     printf("Using %s\n", VERSION_INFO);
 
@@ -106,7 +106,7 @@ int main(int argc, char **argv)
                 break;
             /* NAT */
             case 'n':
-                nat_mode = 1;
+                sr.nat_mode = 1;
                 break;
         } /* switch */
     } /* -- while -- */

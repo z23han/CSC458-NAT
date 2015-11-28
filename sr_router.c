@@ -22,6 +22,7 @@
 #include "sr_protocol.h"
 #include "sr_arpcache.h"
 #include "sr_utils.h"
+#include "sr_nat.h"
 
 
 /*---------------------------------------------------------------------
@@ -49,7 +50,7 @@ void sr_init(struct sr_instance* sr)
     pthread_create(&thread, &(sr->attr), sr_arpcache_timeout, sr);
     
     /* Add initialization code here! */
-    if (sr_nat_init(&(sr->nat)) != 0) {
+    if (sr_nat_init(sr->nat) != 0) {
         fprintf(stderr, "nat initialization error!\n");
         return;
     }
@@ -149,7 +150,7 @@ void sr_handle_arppacket(struct sr_instance* sr,
 
     /* check the opcode to see if it is request or reply */
     unsigned short ar_op = ntohs(arp_hdr->ar_op);
-    /* Get the connected interface in the router */
+    /* Get the connecsr_nat *ted interface in the router */
     struct sr_if *sr_con_if = sr_get_interface(sr, interface);
     /* Get the detination interface in the router */
     /*struct sr_if *sr_iface = sr_get_router_if(sr, arp_hdr->ar_tip);*/
@@ -269,7 +270,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
     uint8_t ip_p = ip_hdr->ip_p;
 
     /* get the nat */
-    struct sr_nat_mapping *nat = sr->nat;
+    struct sr_nat *nat = sr->nat;
 
     /* ****************** nat-mode ********************* */
     if (sr->nat_mode) {
@@ -352,6 +353,8 @@ void sr_handle_ippacket(struct sr_instance* sr,
                     fprintf(stderr, "cannot find eth2, longest_pref_match error! Drop the packet!\n");
                     return;
                 }
+
+				struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
 
                 /* check the nat, or insert new one into nat */
                 if (nat_lookup == NULL) {

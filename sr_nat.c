@@ -4,6 +4,7 @@
 #include "sr_nat.h"
 #include <unistd.h>
 #include <time.h>
+#include <stdlib.h>
 
 int sr_nat_init(struct sr_nat *nat) { /* Initializes the nat */
 
@@ -51,7 +52,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
     sleep(1.0);
     pthread_mutex_lock(&(nat->lock));
 
-    time_t curtime = time(NULL);
+    /*time_t curtime = time(NULL);*/
 
     /* handle periodic tasks here */
 
@@ -158,7 +159,7 @@ int generate_icmp_identifier(struct sr_nat *nat) {
     pthread_mutex_lock(&(nat->lock));
 
     uint16_t identifier = nat->identifier_counter;
-    identifier_counter ++;
+    nat->identifier_counter ++;
 
     pthread_mutex_unlock(&(nat->lock));
     return identifier;
@@ -171,7 +172,7 @@ int generate_port(struct sr_nat *nat) {
     pthread_mutex_lock(&(nat->lock));
 
     uint16_t port = nat->port_counter;
-    port_counter ++;
+    nat->port_counter ++;
 
     pthread_mutex_unlock(&(nat->lock));
     return port;
