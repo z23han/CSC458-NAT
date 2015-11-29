@@ -276,11 +276,11 @@ void sr_handle_ippacket(struct sr_instance* sr,
     if (sr->nat_mode) {
 
         /* ********sent to me and coming from internal ******** */
-        /* ************send the packet back************ */
         if ((sr_iface && strcmp(sr_con_if->name, "eth1") == 0) || (sr_iface && strcmp(sr_con_if->name, "eth2") == 0 && strcmp(sr_con_if->name, sr_iface) != 0)) {
-
+            /* ************send the packet back************ */
             /* if it is icmp */
             if (ip_p == ip_protocol_icmp) {
+                fprintf(stderr, "***** -> Received ICMP!\n");
                 /* get icmp header */
                 sr_icmp_hdr_t *icmp_hdr = get_icmp_hdr(packet);
 
@@ -328,9 +328,46 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 }
             }
             /* else if it is tcp */
-            else if (ip_p == 0x0006) {
-                printf("tcp protocol!!!\n");
-				return;
+            else if (ip_p == ip_protocol_tcp) {
+                fprintf(stderr, "***** -> Received TCP!\n");
+                /* send a icmp type 3 port unreachable (code = 3) */
+
+                /* get the longest prefix match */
+                struct sr_rt *longest_pref_match = sr_lpm(sr, ip_hdr->ip_src);
+
+                if (longest_pref_match == NULL) {
+                    fprintf(stderr, "Longest prefix match error! Drop the packet!\n");
+                    return;
+                }
+
+                struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
+
+                struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
+
+                int packet_len = ICMP_T3_PACKET_LEN;
+                uint8_t *icmp_t3_hdr = (uint8_t *)malloc(sizeof(packet_len));
+
+                /* create ethernet header */
+                create_ethernet_hdr(eth_hdr, (sr_ethernet_hdr_t *)icmp_t3_hdr, out_iface);
+
+                /* create ip header */
+                create_echo_ip_hdr(ip_hdr, (sr_ip_hdr_t *)((char *)icmp_t3_hdr+ETHER_PACKET_LEN), out_iface);
+
+                /* create icmp t3 port unreachable */
+                create_icmp_t3_hdr(ip_hdr, (sr_icmp_t3_hdr_t *)((char *)icmp_t3_hdr+IP_PACKET_LEN), 3, 3);
+
+                /* check arp cache */
+                struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
+
+                if (arp_entry) {
+                    sr_send_packet(sr, icmp_t3_hdr, packet_len, out_iface->name);
+                    return;
+                } else {
+                    struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_src, icmp_t3_hdr, packet_len, out_iface->name);
+                    handle_arpreq(arp_req, sr);
+                    return;
+                }
+
             }
             /* else drop the packet */
             else {
@@ -344,6 +381,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
 
             /* if it is icmp */
             if (ip_p == ip_protocol_icmp) {
+                fprintf(stderr, "***** -> Received ICMP!\n");
                 /* get icmp header */
                 sr_icmp_hdr_t *icmp_hdr = get_icmp_hdr(packet);
                 /* check the internal nat */
@@ -394,8 +432,11 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 }
             }
             /* else if it is tcp */
-            else if (ip_p == 0x0006) {
-                printf("tcp protocol!!!\n");
+            else if (ip_p == ip_protocol_tcp) {
+                fprintf(stderr, "***** -> Received TCP!\n");
+                /* get tcp header */
+                sr_tcp_hdr_t *tcp_hdr = get_tcp_hdr(packet);
+
 				return;
             }
             /* else drop the packet */
@@ -407,6 +448,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
         
         /* ********sent to me and is coming from external******** */ 
         else if (strcmp(sr_con_if->name, "eth2") == 0) {
+            fprintf(stderr, "***** -> Received ICMP!\n");
             /* if it is icmp */
             if (ip_p == ip_protocol_icmp) {
                 /* get icmp header */
@@ -510,8 +552,9 @@ void sr_handle_ippacket(struct sr_instance* sr,
  
             }
             /* else if it is tcp */
-            else if (ip_p == 0x0006) {
-                printf("tcp protocol!!!\n");
+            else if (ip_p == ip_protocol_tcp) {
+                fprintf(stderr, "***** -> Received TCP!\n");
+                
 				return;
             }
             /* else drop the packet */
@@ -1045,6 +1088,18 @@ struct sr_if *sr_get_router_if(struct sr_instance *sr, uint32_t ip) {
         iface_list = iface_list->next;
     }
     return NULL;
+}
+
+
+/* Get tcp header */
+sr_tcp_hdr_t *get_tcp_hdr(uint8_t *packet) {
+    assert(packet);
+    sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *)((unsigned char *)packet + IP_PACKET_LEN);
+    if (!tcp_hdr) {
+        fprintf(stderr, "Failed to get tcp header!\n");
+        return NULL;
+    }
+    return tcp_hdr;
 }
 
 
