@@ -277,7 +277,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
 
         /* ********sent to me and coming from internal ******** */
         /* ************send the packet back************ */
-        if (sr_iface && (strcmp(sr_con_if->name, "eth1") == 0 || strcmp(sr_con_if->name, "eth2") == 0)) {
+        if ((sr_iface && strcmp(sr_con_if->name, "eth1") == 0) || (sr_iface && strcmp(sr_con_if->name, "eth2") == 0 && strcmp(sr_con_if->name, sr_iface) != 0)) {
 
             /* if it is icmp */
             if (ip_p == ip_protocol_icmp) {
@@ -362,17 +362,18 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 if (nat_lookup == NULL) {
                     nat_lookup = sr_nat_insert_mapping(nat, ip_hdr->ip_src, icmp_hdr->icmp_identifier, nat_mapping_icmp);
                     nat_lookup->ip_ext = out_iface->ip;
-                    nat_lookup->aux_int = generate_icmp_identifier(nat);
+                    nat_lookup->aux_ext = generate_icmp_identifier(nat);
                 }
                 nat_lookup->last_updated = time(NULL);
 
                 /* modify ip */
                 ip_hdr->ip_src = nat_lookup->ip_ext;
+				ip_hdr->ip_ttl--;
                 ip_hdr->ip_sum = 0;
                 ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
 
                 /* modify icmp */
-                icmp_hdr->icmp_identifier = nat_lookup->aux_int;
+                icmp_hdr->icmp_identifier = nat_lookup->aux_ext;
                 unsigned int icmp_whole_size = len - IP_PACKET_LEN;
                 icmp_hdr->icmp_sum = 0;
                 icmp_hdr->icmp_sum = cksum(icmp_hdr, icmp_whole_size);
@@ -434,6 +435,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
 
                     /* modify ip header */
                     ip_hdr->ip_dst = ip_int;
+					ip_hdr->ip_ttl--;
                     ip_hdr->ip_sum = 0;
                     ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
 
