@@ -188,11 +188,11 @@ typedef struct sr_arp_hdr sr_arp_hdr_t;
 
 /* Structure of tcp protocol */
 struct sr_tcp_hdr {
-    unsigned uint16_t src_port;
-    unsigned uint16_t dst_port;
-    unsigned uint32_t seq_number;
-    unsigned uint32_t ack_number;
-    unsigned uint8_t data_offset_reserved_ecn;
+    uint16_t src_port;
+    uint16_t dst_port;
+    uint32_t seq_number;
+    uint32_t ack_number;
+    uint8_t data_offset_reserved_ecn;
 #if __BYTE_ORDER == __LITTLE_ENDIAN
     unsigned int fin:1;     /* no more data from sender */
     unsigned int syn:1;     /* synchronize sequence number */
@@ -216,9 +216,9 @@ struct sr_tcp_hdr {
 #else
 #error "Byte ordering ot specified " 
 #endif 
-    unsigned uint16_t window_size;
-    unsigned uint16_t tcp_sum;
-    unsigned uint16_t urg_number;
+    uint16_t window_size;
+    uint16_t tcp_sum;
+    uint16_t urg_number;
 }__attribute__ ((packed)) ;
 typedef struct sr_tcp_hdr sr_tcp_hdr_t;
 

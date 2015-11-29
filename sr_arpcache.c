@@ -187,9 +187,7 @@ void sr_arpcache_sweepreqs(struct sr_instance *sr) {
 /* Checks if an IP->MAC mapping is in the cache. IP is in network byte order.
    You must free the returned structure if it is not NULL. */
 struct sr_arpentry *sr_arpcache_lookup(struct sr_arpcache *cache, uint32_t ip) {
-   printf("start lookup\n");   
     pthread_mutex_lock(&(cache->lock));
-     printf("start lookup get lock\n");  
     struct sr_arpentry *entry = NULL, *copy = NULL;
     
     int i;
@@ -207,7 +205,6 @@ struct sr_arpentry *sr_arpcache_lookup(struct sr_arpcache *cache, uint32_t ip) {
     }
         
     pthread_mutex_unlock(&(cache->lock));
-   printf("end lookup\n");   
     return copy;
 }
 

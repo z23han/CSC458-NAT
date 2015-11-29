@@ -277,7 +277,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
 
         /* ********sent to me and coming from internal ******** */
         /* ************send the packet back************ */
-        if (sr_iface && strcmp(sr_con_if->name, "eth1")) {
+        if (sr_iface && strcmp(sr_con_if->name, "eth1") == 0) {
 
             /* if it is icmp */
             if (ip_p == ip_protocol_icmp) {
@@ -319,6 +319,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
 
                 if (arp_entry) {
                     sr_send_packet(sr, packet, len, out_iface->name);
+					printf("sending icmp echo\n");
                     return;
                 } else {
                     struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_dst, packet, len, out_iface->name);
@@ -339,7 +340,8 @@ void sr_handle_ippacket(struct sr_instance* sr,
         }
         /* ********not sent to me and is coming from internal******** */
         /* ************check the nat and forward the packet************ */
-        else if (sr_iface == NULL && strcmp(sr_con_if->name, "eth1")) {
+        else if (sr_iface == NULL && strcmp(sr_con_if->name, "eth1") == 0) {
+
             /* if it is icmp */
             if (ip_p == ip_protocol_icmp) {
                 /* get icmp header */
@@ -400,7 +402,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
         }
         
         /* ********sent to me and is coming from external******** */ 
-        else if (sr_iface == sr_con_if && strcmp(sr_con_if->name, "eth2")) {
+        else if (strcmp(sr_con_if->name, "eth2") == 0) {
             /* if it is icmp */
             if (ip_p == ip_protocol_icmp) {
                 /* get icmp header */
