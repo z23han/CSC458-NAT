@@ -446,8 +446,8 @@ void sr_handle_ippacket(struct sr_instance* sr,
             }
         }
         
-        /* ********sent to me and is coming from external******** */ 
-        else if (strcmp(sr_con_if->name, "eth2") == 0) {
+        /* ********sent to me and is coming from external and is sent to the router******** */ 
+        else if (strcmp(sr_con_if->name, "eth2") == 0 && strcmp(sr_con_if->name, sr_iface->name) == 0) {
             fprintf(stderr, "***** -> Received ICMP!\n");
             /* if it is icmp */
             if (ip_p == ip_protocol_icmp) {
@@ -505,49 +505,10 @@ void sr_handle_ippacket(struct sr_instance* sr,
                         return;
                     }
                 } 
-                /* if not in the mapping, send back the packet */
+                /* if not in the mapping, drop the packet! */
                 else {
-                    /* longest prefix match to find the return interface */
-                    struct sr_rt *longest_pref_match = sr_lpm(sr, ip_hdr->ip_src);
-
-                    if (longest_pref_match == NULL) {
-                        fprintf(stderr, "cannot find eth2, longest_pref_match error! Drop the packet!\n");
-                        return;
-                    }
-
-                    struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
-
-                    /* modify ethernet header */
-                    memcpy(eth_hdr->ether_dhost, eth_hdr->ether_shost, ETHER_ADDR_LEN);
-                    memcpy(eth_hdr->ether_shost, out_iface->addr, ETHER_ADDR_LEN);
-
-                    /* modify ip header */
-                    ip_hdr->ip_off = htons(0b0100000000000000);
-                    ip_hdr->ip_ttl = 100;
-                    uint32_t temp = ip_hdr->ip_src;
-                    ip_hdr->ip_src = ip_hdr->ip_dst;
-                    ip_hdr->ip_dst = temp;
-                    ip_hdr->ip_sum = 0;
-                    ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
-
-                    /* modify icmp header */
-                    unsigned int icmp_whole_size = len - IP_PACKET_LEN;
-                    icmp_hdr->icmp_type = 0;
-                    icmp_hdr->icmp_code = 0;
-                    icmp_hdr->icmp_sum = 0;
-                    icmp_hdr->icmp_sum = cksum(icmp_hdr, icmp_whole_size);
-
-                    /* check the arp cache */
-                    struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
-
-                    if (arp_entry) {
-                        sr_send_packet(sr, packet, len, out_iface->name);
-                        return;
-                    } else {
-                        struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_dst, packet, len, out_iface->name);
-                        handle_arpreq(arp_req, sr);
-                        return;
-                    }
+                    fprintf(stderr, "packet from external but not in the mapping! Drop the packet!\n");
+                    return;
                 }
  
             }
