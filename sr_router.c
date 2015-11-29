@@ -382,6 +382,9 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
 
                 if (arp_entry) {
+                    /* modify ethernet header */
+                    memcpy(eth_hdr->ether_dhost, arp_entry->mac, ETHER_ADDR_LEN);
+                    memcpy(eth_hdr->ether_shost, out_iface->addr, ETHER_ADDR_LEN);
                     sr_send_packet(sr, packet, len, out_iface->name);
                     return;
                 } else {
@@ -449,6 +452,9 @@ void sr_handle_ippacket(struct sr_instance* sr,
                     struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
 
                     if (arp_entry) {
+                        /* modify ethernet header */
+                        memcpy(eth_hdr->ether_dhost, arp_entry->mac, ETHER_ADDR_LEN);
+                        memcpy(eth_hdr->ether_shost, out_iface->addr, ETHER_ADDR_LEN);
                         sr_send_packet(sr, packet, len, out_iface->name);
                         return;
                     } else {
