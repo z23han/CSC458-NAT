@@ -36,6 +36,12 @@ typedef enum {
 struct sr_nat_connection {
   /* add TCP connection state data members here */
 
+  uint32_t ip;
+  uint32_t client_isn;
+  uint32_t server_isn;
+  time_t last_updated;
+  sr_tcp_state tcp_state;
+
   struct sr_nat_connection *next;
 };
 
@@ -88,5 +94,10 @@ struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
 
 int generate_icmp_identifier(struct sr_nat *nat);
 int generate_port(struct sr_nat *nat);
+
+struct sr_nat_connection *sr_nat_lookup_tcp_con(struct sr_nat_mapping *mapping, uint32_t ip_con);
+struct sr_nat_connection *sr_nat_insert_tcp_con(struct sr_nat_mapping *mapping, uint32_t ip_con);
+void destroy_tcp_conn(struct sr_nat_mapping *mapping, struct sr_nat_connection *conn);
+
 
 #endif

@@ -191,11 +191,11 @@ typedef struct sr_arp_hdr sr_arp_hdr_t;
 struct sr_tcp_hdr {
     uint16_t src_port;
     uint16_t dst_port;
-    uint32_t seq_number;
-    uint32_t ack_number;
+    uint32_t seq_num;
+    uint32_t ack_num;
     uint8_t data_offset_reserved_ecn;
 #if __BYTE_ORDER == __LITTLE_ENDIAN
-    unsigned int fin:1;     /* no more data from sender */
+    unsigned int fin:1;     /* no more data from sender, terminates a connection */
     unsigned int syn:1;     /* synchronize sequence number */
     unsigned int rst:1;     /* reset the connection */
     unsigned int psh:1;     /* push function */
@@ -213,15 +213,27 @@ struct sr_tcp_hdr {
     unsigned int psh:1;     /* push function */
     unsigned int rst:1;     /* reset the connection */
     unsigned int syn:1;     /* synchronize sequence number */
-    unsigned int fin:1;     /* no more data from sender */
+    unsigned int fin:1;     /* no more data from sender, terminates a connection */
 #else
 #error "Byte ordering ot specified " 
 #endif 
     uint16_t window_size;
     uint16_t tcp_sum;
-    uint16_t urg_number;
+    uint16_t urg_num;
 }__attribute__ ((packed)) ;
 typedef struct sr_tcp_hdr sr_tcp_hdr_t;
+
+
+/* TCP pseudo header */
+struct sr_tcp_pseudo_hdr
+{
+    uint32_t ip_src;        /* Source IP address */
+    uint32_t ip_dst;        /* Destination IP address */
+    uint8_t zero;           /* it has to be 0 */
+    uint8_t ip_p;           /* IP protocol */
+    uint32_t len;           /* total length */
+}__attribute__ ((packed));
+typedef struct sr_tcp_pseudo_hdr sr_tcp_pseudo_hdr_t;
 
 
 #define sr_IFACE_NAMELEN 32

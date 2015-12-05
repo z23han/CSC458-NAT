@@ -315,7 +315,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 icmp_hdr->icmp_sum = cksum(icmp_hdr, icmp_whole_size);
 
                 /* check the arp cache */
-                struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
+                struct sr_arpentry *arp_entry = sr_arpcache_lookup(&(sr->cache), longest_pref_match->gw.s_addr);
 
                 if (arp_entry) {
                     sr_send_packet(sr, packet, len, out_iface->name);
@@ -342,7 +342,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
 
                 struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
 
-                struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
+                struct sr_arpentry *arp_entry = sr_arpcache_lookup(&(sr->cache), longest_pref_match->gw.s_addr);
 
                 int packet_len = ICMP_T3_PACKET_LEN;
                 uint8_t *icmp_t3_hdr = (uint8_t *)malloc(sizeof(packet_len));
@@ -357,7 +357,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 create_icmp_t3_hdr(ip_hdr, (sr_icmp_t3_hdr_t *)((char *)icmp_t3_hdr+IP_PACKET_LEN), 3, 3);
 
                 /* check arp cache */
-                struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
+                struct sr_arpentry *arp_entry = sr_arpcache_lookup(&(sr->cache), longest_pref_match->gw.s_addr);
 
                 if (arp_entry) {
                     sr_send_packet(sr, icmp_t3_hdr, packet_len, out_iface->name);
@@ -394,7 +394,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                     return;
                 }
 
-				struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
+                struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
 
                 /* check the nat, or insert new one into nat */
                 if (nat_lookup == NULL) {
@@ -417,7 +417,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 icmp_hdr->icmp_sum = cksum(icmp_hdr, icmp_whole_size);
 
                 /* check the arp cache */
-                struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
+                struct sr_arpentry *arp_entry = sr_arpcache_lookup(&(sr->cache), longest_pref_match->gw.s_addr);
 
                 if (arp_entry) {
                     /* modify ethernet header */
@@ -436,6 +436,55 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 fprintf(stderr, "***** -> Received TCP!\n");
                 /* get tcp header */
                 sr_tcp_hdr_t *tcp_hdr = get_tcp_hdr(packet);
+
+                /* check the internal nat */
+                struct sr_nat_mapping *nat_lookup = sr_nat_lookup_internal(nat, ip_hdr->ip_src, tcp_hdr->src_port, nat_mapping_tcp);
+
+                /* longest prefix match to find the interface */
+                struct sr_rt *longest_pref_match = sr_lpm(sr, ip_hdr->ip_dst);
+                if (longest_pref_match == NULL) {
+                    fprintf(stderr, "cannot find eth2, longest_pref_match error! Drop the packet!\n");
+                    return;
+                }
+
+                struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
+
+                /* check the nat, or insert new one into nat */
+                if (nat_lookup == NULL) {
+                    nat_lookup = sr_nat_insert_mapping(nat, ip_hdr->ip_src, tcp_hdr->src_port, nat_mapping_tcp);
+                    nat_lookup->ip_ext = out_iface->ip;
+                    nat_lookup->aux_ext = generate_port(nat);
+                }
+                nat_lookup->last_updated = time(NULL);
+
+                /* modify ip */
+                ip_hdr->ip_src = nat_lookup->ip_ext;
+                ip_hdr->ip_ttl--;
+                ip_hdr->ip_sum = 0;
+                ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
+
+                /* need to construct a new tcp with pseudo header to get the checksum */
+                int pseudo_len = sizeof(sr_tcp_pseudo_hdr_t) + sizeof(sr_tcp_hdr_t);
+                uint8_t *pseudo_header = (uint8_t *)malloc(pseudo_len);
+                /* modify pseudo header */
+                pseudo_header->ip_src = ip_hdr->ip_src;
+                pseudo_header->ip_dst = ip_hdr->ip_dst;
+                pseudo_header->zero = 0;
+                pseudo_header->ip_p = ip_protocol_tcp;
+                pseudo_header->len = len - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t);
+
+                /* modify tcp */
+                /* critical section, pthread lock */
+                pthread_mutex_lock(&(nat->lock));
+
+                struct sr_nat_connection *tcp_con = sr_nat_lookup_tcp_con(nat_lookup, ip_hdr->ip_dst);
+                /* if NULL, insert into nat_mapping */
+                if (tcp_con == NULL) {
+                    tcp_con = sr_nat_insert_tcp_con(nat_lookup, ip_hdr->ip_dst);
+                }
+                tcp_con->last_updated = time(NULL);
+
+
 
 				return;
             }
@@ -491,7 +540,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                     icmp_hdr->icmp_sum = cksum(icmp_hdr, icmp_whole_size);
 
                     /* check the arp cache */
-                    struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
+                    struct sr_arpentry *arp_entry = sr_arpcache_lookup(&(sr->cache), longest_pref_match->gw.s_addr);
 
                     if (arp_entry) {
                         /* modify ethernet header */
@@ -550,7 +599,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
 
                     if (longest_pref_match) {
                         /* check ARP cache */
-                        struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
+                        struct sr_arpentry *arp_entry = sr_arpcache_lookup(&(sr->cache), longest_pref_match->gw.s_addr);
                         struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
 
                         /* If hit, meaning the arp mapping has been cached */
@@ -628,7 +677,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
 
                 if (longest_pref_match) {
                     /* check ARP cache */
-                    struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
+                    struct sr_arpentry *arp_entry = sr_arpcache_lookup(&(sr->cache), longest_pref_match->gw.s_addr);
                     struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
                     
                     /* Send ICMP port unreachable */
@@ -699,7 +748,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 /* check ARP cache */
                 struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
 
-                struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr); /* ip_hdr->ip_dst */
+                struct sr_arpentry *arp_entry = sr_arpcache_lookup(&(sr->cache), longest_pref_match->gw.s_addr); /* ip_hdr->ip_dst */
              
                 /* If hit, meaning the arp_entry is found */
                 if (arp_entry) {
@@ -750,7 +799,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
 
                 if (longest_pref_match) {
                     /* check ARP cache */
-                    struct sr_arpentry *arp_entry = sr_arpcache_lookup(&sr->cache, longest_pref_match->gw.s_addr);
+                    struct sr_arpentry *arp_entry = sr_arpcache_lookup(&(sr->cache), longest_pref_match->gw.s_addr);
                     struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
 
                     if (arp_entry) {
@@ -1064,3 +1113,36 @@ sr_tcp_hdr_t *get_tcp_hdr(uint8_t *packet) {
 }
 
 
+/* tcp state transition */
+void tcp_outbound_state_transition(sr_tcp_hdr_t *tcp_hdr, sr_nat_connection *tcp_con) {
+    unsigned int fin = ntohs(tcp_hdr->fin);     /* no more data from sender, terminates a connection */
+    unsigned int syn = ntohs(tcp_hdr->syn);     /* synchronize sequence number */
+    unsigned int ack = ntohs(tcp_hdr->ack);     /* indicate acknowledge field is significant */
+    uint32_t ack_num = ntohs(tcp_hdr->ack_num);
+    uint32_t seq_num = ntohs(tcp_hdr->seq_num);
+
+    /* TCP state transition */
+    switch (tcp_con->tcp_state) {
+        case CLOSED:
+            /*  */
+            if (ack_num == 0 && syn && !ack) {
+                tcp_con->client_isn = seq_num;
+                tcp_con->tcp_state = SYN_SENT;
+            }
+            break;
+
+        case SYN_SENT:
+            if ((seq_num == tcp_hdr->client_isn+1) && (ack_num == tcp_con->server_isn+1) && !syn) {
+                tcp_con->client_isn = seq_num;
+                tcp_con->tcp_state = ESTABLISHED;
+            }
+            break;
+
+        case ESTABLISHED:
+            if (fin && ack) {
+                tcp_con->client_isn = seq_num;
+                tcp_con->tcp_state = CLOSED;
+            }
+            break;
+    }
+}

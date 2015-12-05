@@ -177,3 +177,70 @@ int generate_port(struct sr_nat *nat) {
     pthread_mutex_unlock(&(nat->lock));
     return port;
 }
+
+
+/* Get the connection associated with given ip in the nat */
+struct sr_nat_connection *sr_nat_lookup_tcp_con(struct sr_nat_mapping *mapping, uint32_t ip_con) {
+    struct sr_nat_connection *currConn = mapping->conns;
+
+    while (currConn != NULL) {
+        if (currConn->ip == ip_con) {
+            return currConn;
+        }
+        currConn = currConn->next;
+    }
+    return NULL;
+}
+
+
+/* insert a new connection associated with given IP in the nat */
+struct sr_nat_connection *sr_nat_insert_tcp_con(struct sr_nat_mapping *mapping, uint32_t ip_con) {
+    struct sr_nat_connection *newConn = (sr_nat_connection *)malloc(sizeof(struct sr_nat_connection));
+
+    assert(newConn != NULL);
+
+    newConn->ip = ip_con;
+    /* 
+    uint32_t client_isn;
+    uint32_t server_isn;
+    */
+    newConn->last_updated = time(NULL);
+    newConn->tcp_state = CLOSED;
+
+    struct sr_nat_connection *old_header = mapping->conns;
+    mapping->conns = newConn;
+    newConn->next = old_header;
+
+    return newConn;
+}
+
+
+/* Destroy nat tcp connection */
+void destroy_tcp_conn(struct sr_nat_mapping *mapping, struct sr_nat_connection *conn) {
+    printf("[REMOVE] TCP connection!\n");
+
+    struct sr_nat_connection *currConn = mapping->conns;
+    if (currConn == NULL) {
+        free(conn);
+        return;
+    }
+    if (currConn == conn) {
+        mapping->conns = currConn->next;
+        free(conn);
+        return;
+    }
+    struct sr_nat_connection *nextConn = currConn->next;
+
+    while (nextConn != NULL) {
+        if (nextConn == conn) {
+            currConn->next = nextConn->next;
+            free(conn);
+            return;
+        }
+        currConn = nextConn;
+        nextConn = nextConn->next;
+    }
+
+    free(conn);
+    return;
+}
