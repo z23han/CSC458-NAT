@@ -1114,22 +1114,30 @@ sr_tcp_hdr_t *get_tcp_hdr(uint8_t *packet) {
 
 
 /* tcp state transition */
-void tcp_state_transition(sr_tcp_hdr_t *tcp_hdr, struct sr_nat_connection *tcp_con, int isOutbound) {
+void tcp_state_transition(sr_tcp_hdr_t *tcp_hdr, sr_ip_hdr_t *ip_hdr, 
+    struct sr_nat_connection *tcp_con, int isOutbound) {
     unsigned int fin = ntohs(tcp_hdr->fin);     /* no more data from sender, terminates a connection */
     unsigned int syn = ntohs(tcp_hdr->syn);     /* synchronize sequence number */
     unsigned int ack = ntohs(tcp_hdr->ack);     /* indicate acknowledge field is significant */
     uint32_t ack_num = ntohs(tcp_hdr->ack_num);
     uint32_t seq_num = ntohs(tcp_hdr->seq_num);
 
-    /* if it is outbound tcp packet */
-    if (isOutbound == 1) {
-        printf("Outbound packet!\n");
-        return;
-    }
-    /* otherwise inbound tcp packet */
-    else {
-        printf("Inbound packet!\n");
-        return;
+    switch (tcp_hdr->tcp_state) {
+        case CLOSED:
+            /* it is outbound */
+            if (isOutbound == 1 && syn && !ack) {
+                tcp_con->isn_client = seq_num;
+                tcp_con->last_updated = time(NULL);
+                tcp_con->tcp_state = SYN_SENT;
+            }
+            break;
+
+        case SYN_SENT:
+            /* it is inbound */
+            if (isOutbound == 0 && syn && !ack) {
+                tcp_con->ip_server = ip_hdr->ip_src;
+                tcp_con->port_server = 
+            }
     }
     
 }
