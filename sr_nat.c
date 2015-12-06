@@ -185,27 +185,27 @@ struct sr_nat_connection *sr_nat_lookup_tcp_con(struct sr_nat *nat, struct sr_na
 
     pthread_mutex_lock(&(nat->lock));
 
-    struct sr_nat_connection *currConn = mapping->conns;
+    struct sr_nat_mapping *currMapping = nat->mappings;
 
     /* find the mapping */
-    while (currConn != NULL) {
-        if (currConn->ip_int == copy->ip_int && currConn->aux_int == copy->aux_int 
-            && currConn->type == nat_mapping_tcp) {
+    while (currMapping != NULL) {
+        if (currMapping->ip_int == copy->ip_int && currMapping->aux_int == copy->aux_int 
+            && currMapping->type == nat_mapping_tcp) {
             
-            struct sr_nat_connection *con = currConn->conns;
+            struct sr_nat_connection *currConn = currMapping->conns;
 
             /* find the connection */
-            while (con) {
-                if (con->ip_server == ip_server && con->port_server == port_server) {
+            while (currConn) {
+                if (currConn->ip_server == ip_server && currConn->port_server == port_server) {
                     pthread_mutex_unlock(&(nat->lock));
 
-                    return con;
+                    return currConn;
                 }
-                con = con->next;
+                currConn = currConn->next;
             }
             break;
         }
-        currConn = currConn->next;
+        currMapping = currMapping->next;
     }
     pthread_mutex_unlock(&(nat->lock));
 
@@ -226,7 +226,7 @@ void sr_nat_insert_tcp_con(struct sr_nat *nat, struct sr_nat_mapping *copy, uint
             && currMapping->type == nat_mapping_tcp) {
             
             /* create a new connection */
-            struct sr_nat_connection *newConn = (sr_nat_connection *)malloc(sizeof(struct sr_nat_connection));
+            struct sr_nat_connection *newConn = (struct sr_nat_connection *)malloc(sizeof(struct sr_nat_connection));
             assert(newConn != NULL);
             /* modify all the parameters */
             newConn->ip_server = ip_server;
@@ -241,7 +241,7 @@ void sr_nat_insert_tcp_con(struct sr_nat *nat, struct sr_nat_mapping *copy, uint
             currMapping->conns = newConn;
             break;
         }
-        currConn = currConn->next;
+        currMapping = currMapping->next;
     }
 
     pthread_mutex_unlock(&(nat->lock));
