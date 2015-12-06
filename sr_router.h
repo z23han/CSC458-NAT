@@ -15,6 +15,7 @@
 
 #include "sr_protocol.h"
 #include "sr_arpcache.h"
+#include "sr_nat.h"
 
 /* we dont like this debug , but what to do for varargs ? */
 #ifdef _DEBUG_

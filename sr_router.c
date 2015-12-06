@@ -342,8 +342,6 @@ void sr_handle_ippacket(struct sr_instance* sr,
 
                 struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
 
-                struct sr_arpentry *arp_entry = sr_arpcache_lookup(&(sr->cache), longest_pref_match->gw.s_addr);
-
                 int packet_len = ICMP_T3_PACKET_LEN;
                 uint8_t *icmp_t3_hdr = (uint8_t *)malloc(sizeof(packet_len));
 
@@ -465,26 +463,14 @@ void sr_handle_ippacket(struct sr_instance* sr,
 
                 /* need to construct a new tcp with pseudo header to get the checksum */
                 int pseudo_len = sizeof(sr_tcp_pseudo_hdr_t) + sizeof(sr_tcp_hdr_t);
-                uint8_t *pseudo_header = (uint8_t *)malloc(pseudo_len);
+                uint8_t *tcp_hdr_for_cksum = (uint8_t *)malloc(pseudo_len);
                 /* modify pseudo header */
+				sr_tcp_pseudo_hdr_t *pseudo_header = (sr_tcp_pseudo_hdr_t *)tcp_hdr_for_cksum;
                 pseudo_header->ip_src = ip_hdr->ip_src;
                 pseudo_header->ip_dst = ip_hdr->ip_dst;
                 pseudo_header->zero = 0;
                 pseudo_header->ip_p = ip_protocol_tcp;
                 pseudo_header->len = len - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t);
-
-                /* modify tcp */
-                /* critical section, pthread lock */
-                pthread_mutex_lock(&(nat->lock));
-
-                struct sr_nat_connection *tcp_con = sr_nat_lookup_tcp_con(nat_lookup, ip_hdr->ip_dst);
-                /* if NULL, insert into nat_mapping */
-                if (tcp_con == NULL) {
-                    tcp_con = sr_nat_insert_tcp_con(nat_lookup, ip_hdr->ip_dst);
-                }
-                tcp_con->last_updated = time(NULL);
-
-
 
 				return;
             }
