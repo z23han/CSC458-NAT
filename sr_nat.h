@@ -20,25 +20,21 @@ typedef enum {
 } sr_nat_mapping_type;
 
 typedef enum {
-  CLOSE_WAIT, 
   CLOSED, 
-  CLOSING, 
-  ESTABLISHED, 
-  FIN_WAIT_1, 
-  FIN_WAIT_2, 
-  LAST_ACK, 
-  LISTEN, 
-  SYN_RCVD, 
   SYN_SENT, 
-  TIME_WAIT
+  SYN_RCVD_BEFORE, 
+  SYN_RCVD, 
+  ESTAB_BEFORE, 
+  ESTAB
 } sr_tcp_state; 
 
 struct sr_nat_connection {
   /* add TCP connection state data members here */
 
-  uint32_t ip;
-  uint32_t client_isn;
-  uint32_t server_isn;
+  uint32_t ip_server;
+  uint16_t port_server;
+  uint32_t isn_client;
+  uint32_t isn_server;
   time_t last_updated;
   sr_tcp_state tcp_state;
 
@@ -95,9 +91,11 @@ struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
 int generate_icmp_identifier(struct sr_nat *nat);
 int generate_port(struct sr_nat *nat);
 
-struct sr_nat_connection *sr_nat_lookup_tcp_con(struct sr_nat_mapping *mapping, uint32_t ip_con);
-struct sr_nat_connection *sr_nat_insert_tcp_con(struct sr_nat_mapping *mapping, uint32_t ip_con);
-void destroy_tcp_conn(struct sr_nat_mapping *mapping, struct sr_nat_connection *conn);
+struct sr_nat_connection *sr_nat_lookup_tcp_con(struct sr_nat *nat, struct sr_nat_mapping *copy,  
+    uint32_t ip_server, uint16_t port_server);
+void sr_nat_insert_tcp_con(struct sr_nat *nat, struct sr_nat_mapping *copy, uint32_t ip_server, 
+    uint16_t port_server, uint32_t isn_client);
+void destroy_tcp_conn(struct sr_nat *nat, struct sr_nat_mapping *copy, struct sr_nat_connection *conn);
 
 
 #endif

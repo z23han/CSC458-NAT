@@ -94,6 +94,7 @@ struct sr_rt *sr_lpm(struct sr_instance *sr, uint32_t ip_dst);
 void send_arp_req_packet_broadcast(struct sr_instance *sr, char * out_iface, uint32_t dest_ip);
 struct sr_if *sr_get_router_if(struct sr_instance *sr, uint32_t ip);
 sr_tcp_hdr_t *get_tcp_hdr(uint8_t *packet);
+void tcp_state_transition(sr_tcp_hdr_t *tcp_hdr, struct sr_nat_connection *tcp_con, int isOutbound);
 
 /* -- sr_if.c -- */
 void sr_add_interface(struct sr_instance* , const char* );

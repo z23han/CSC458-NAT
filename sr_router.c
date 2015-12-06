@@ -1114,35 +1114,22 @@ sr_tcp_hdr_t *get_tcp_hdr(uint8_t *packet) {
 
 
 /* tcp state transition */
-void tcp_outbound_state_transition(sr_tcp_hdr_t *tcp_hdr, sr_nat_connection *tcp_con) {
+void tcp_state_transition(sr_tcp_hdr_t *tcp_hdr, struct sr_nat_connection *tcp_con, int isOutbound) {
     unsigned int fin = ntohs(tcp_hdr->fin);     /* no more data from sender, terminates a connection */
     unsigned int syn = ntohs(tcp_hdr->syn);     /* synchronize sequence number */
     unsigned int ack = ntohs(tcp_hdr->ack);     /* indicate acknowledge field is significant */
     uint32_t ack_num = ntohs(tcp_hdr->ack_num);
     uint32_t seq_num = ntohs(tcp_hdr->seq_num);
 
-    /* TCP state transition */
-    switch (tcp_con->tcp_state) {
-        case CLOSED:
-            /*  */
-            if (ack_num == 0 && syn && !ack) {
-                tcp_con->client_isn = seq_num;
-                tcp_con->tcp_state = SYN_SENT;
-            }
-            break;
-
-        case SYN_SENT:
-            if ((seq_num == tcp_hdr->client_isn+1) && (ack_num == tcp_con->server_isn+1) && !syn) {
-                tcp_con->client_isn = seq_num;
-                tcp_con->tcp_state = ESTABLISHED;
-            }
-            break;
-
-        case ESTABLISHED:
-            if (fin && ack) {
-                tcp_con->client_isn = seq_num;
-                tcp_con->tcp_state = CLOSED;
-            }
-            break;
+    /* if it is outbound tcp packet */
+    if (isOutbound == 1) {
+        printf("Outbound packet!\n");
+        return;
     }
+    /* otherwise inbound tcp packet */
+    else {
+        printf("Inbound packet!\n");
+        return;
+    }
+    
 }

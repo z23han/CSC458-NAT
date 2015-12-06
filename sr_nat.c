@@ -179,68 +179,122 @@ int generate_port(struct sr_nat *nat) {
 }
 
 
-/* Get the connection associated with given ip in the nat */
-struct sr_nat_connection *sr_nat_lookup_tcp_con(struct sr_nat_mapping *mapping, uint32_t ip_con) {
+/* Get the connection associated with all the parameters */
+struct sr_nat_connection *sr_nat_lookup_tcp_con(struct sr_nat *nat, struct sr_nat_mapping *copy,  
+    uint32_t ip_server, uint16_t port_server) {
+
+    pthread_mutex_lock(&(nat->lock));
+
     struct sr_nat_connection *currConn = mapping->conns;
 
+    /* find the mapping */
     while (currConn != NULL) {
-        if (currConn->ip == ip_con) {
-            return currConn;
+        if (currConn->ip_int == copy->ip_int && currConn->aux_int == copy->aux_int 
+            && currConn->type == nat_mapping_tcp) {
+            
+            struct sr_nat_connection *con = currConn->conns;
+
+            /* find the connection */
+            while (con) {
+                if (con->ip_server == ip_server && con->port_server == port_server) {
+                    pthread_mutex_unlock(&(nat->lock));
+
+                    return con;
+                }
+                con = con->next;
+            }
+            break;
         }
         currConn = currConn->next;
     }
+    pthread_mutex_unlock(&(nat->lock));
+
     return NULL;
 }
 
 
-/* insert a new connection associated with given IP in the nat */
-struct sr_nat_connection *sr_nat_insert_tcp_con(struct sr_nat_mapping *mapping, uint32_t ip_con) {
-    struct sr_nat_connection *newConn = (sr_nat_connection *)malloc(sizeof(struct sr_nat_connection));
+/* insert a new connection associated with all the parameters */
+void sr_nat_insert_tcp_con(struct sr_nat *nat, struct sr_nat_mapping *copy, uint32_t ip_server, 
+    uint16_t port_server, uint32_t isn_client) {
 
-    assert(newConn != NULL);
+    pthread_mutex_lock(&(nat->lock));
 
-    newConn->ip = ip_con;
-    /* 
-    uint32_t client_isn;
-    uint32_t server_isn;
-    */
-    newConn->last_updated = time(NULL);
-    newConn->tcp_state = CLOSED;
+    struct sr_nat_mapping *currMapping = nat->mappings;
 
-    struct sr_nat_connection *old_header = mapping->conns;
-    mapping->conns = newConn;
-    newConn->next = old_header;
+    while (currMapping) {
+        if (currMapping->ip_int == copy->ip_int && currMapping->aux_int == copy->aux_int 
+            && currMapping->type == nat_mapping_tcp) {
+            
+            /* create a new connection */
+            struct sr_nat_connection *newConn = (sr_nat_connection *)malloc(sizeof(struct sr_nat_connection));
+            assert(newConn != NULL);
+            /* modify all the parameters */
+            newConn->ip_server = ip_server;
+            newConn->port_server = port_server;
+            newConn->isn_client = isn_client;
+            newConn->isn_server = -1;
+            newConn->last_updated = time(NULL);
+            newConn->tcp_state = CLOSED;
 
-    return newConn;
+            /* add the new connection to the mapping */
+            newConn->next = currMapping->conns;
+            currMapping->conns = newConn;
+            break;
+        }
+        currConn = currConn->next;
+    }
+
+    pthread_mutex_unlock(&(nat->lock));
+    
+    return;
 }
 
 
 /* Destroy nat tcp connection */
-void destroy_tcp_conn(struct sr_nat_mapping *mapping, struct sr_nat_connection *conn) {
+void destroy_tcp_conn(struct sr_nat *nat, struct sr_nat_mapping *copy, struct sr_nat_connection *conn) {
     printf("[REMOVE] TCP connection!\n");
+    pthread_mutex_lock(&(nat->lock));
 
-    struct sr_nat_connection *currConn = mapping->conns;
-    if (currConn == NULL) {
-        free(conn);
-        return;
-    }
-    if (currConn == conn) {
-        mapping->conns = currConn->next;
-        free(conn);
-        return;
-    }
-    struct sr_nat_connection *nextConn = currConn->next;
+    struct sr_nat_mapping *currMapping = nat->mappings;
 
-    while (nextConn != NULL) {
-        if (nextConn == conn) {
-            currConn->next = nextConn->next;
-            free(conn);
-            return;
+    while (currMapping) {
+        if (currMapping->ip_int == copy->ip_int && currMapping->aux_int == copy->aux_int 
+            && currMapping->aux_int == copy->aux_int && currMapping->aux_ext == copy->aux_ext 
+            && currMapping->type == copy->type) {
+            
+            struct sr_nat_connection *currConn = currMapping->conns;
+            /* if the mapping has no connection */
+            if (currConn == NULL) {
+                pthread_mutex_unlock(&(nat->lock));
+                return;
+            }
+            /* if the head of the connection is copy */
+            if (currConn->ip_server == conn->ip_server && currConn->port_server == conn->port_server) {
+                currMapping->conns = currConn->next;
+                free(currConn);
+                pthread_mutex_unlock(&(nat->lock));
+                return;
+            }
+
+            struct sr_nat_connection *nextConn = currMapping->next;
+
+            /* else loop through until we find the connection */
+            while (nextConn) {
+                if (nextConn->ip_server == conn->ip_server && nextConn->port_server == conn->port_server) {
+                    currConn->next = nextConn->next;
+                    free(nextConn);
+                    pthread_mutex_unlock(&(nat->lock));
+                    return;
+                }
+                currConn = nextConn;
+                nextConn = nextConn->next;
+            }
+
+            break;
         }
-        currConn = nextConn;
-        nextConn = nextConn->next;
     }
 
-    free(conn);
+    pthread_mutex_unlock(&(nat->lock));
     return;
+
 }
