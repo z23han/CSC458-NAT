@@ -215,7 +215,7 @@ struct sr_nat_connection *sr_nat_lookup_tcp_con(struct sr_nat *nat, struct sr_na
 
 /* insert a new connection associated with all the parameters */
 void sr_nat_insert_tcp_con(struct sr_nat *nat, struct sr_nat_mapping *copy, uint32_t ip_server, 
-    uint16_t port_server, uint32_t isn_client) {
+    uint16_t port_server) {
 
     pthread_mutex_lock(&(nat->lock));
 
@@ -231,7 +231,7 @@ void sr_nat_insert_tcp_con(struct sr_nat *nat, struct sr_nat_mapping *copy, uint
             /* modify all the parameters */
             newConn->ip_server = ip_server;
             newConn->port_server = port_server;
-            newConn->isn_client = isn_client;
+            newConn->isn_client = -1;
             newConn->isn_server = -1;
             newConn->last_updated = time(NULL);
             newConn->tcp_state = CLOSED;

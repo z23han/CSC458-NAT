@@ -94,7 +94,7 @@ int generate_port(struct sr_nat *nat);
 struct sr_nat_connection *sr_nat_lookup_tcp_con(struct sr_nat *nat, struct sr_nat_mapping *copy,  
     uint32_t ip_server, uint16_t port_server);
 void sr_nat_insert_tcp_con(struct sr_nat *nat, struct sr_nat_mapping *copy, uint32_t ip_server, 
-    uint16_t port_server, uint32_t isn_client);
+    uint16_t port_server);
 void destroy_tcp_conn(struct sr_nat *nat, struct sr_nat_mapping *copy, struct sr_nat_connection *conn);
 
 

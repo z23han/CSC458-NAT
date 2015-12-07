@@ -455,6 +455,27 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 }
                 nat_lookup->last_updated = time(NULL);
 
+                /* find the tcp connection */
+                struct sr_nat_connection *tcp_con = sr_nat_lookup_tcp_con(nat, nat_lookup, ip_hdr->ip_dst, aux_ext);
+
+                /* check if the connection exist*/
+                if (tcp_con == NULL) {
+                    unsigned int syn = ntohs(tcp_hdr->syn);
+                    /* if the packet has SYN, create a new tcp_con */
+                    if (syn) {
+                        tcp_con = sr_nat_insert_tcp_con(nat, nat_lookup, ip_hdr->ip_dst, aux_ext);
+                    } 
+                    /* otherwise drop the packet */
+                    else {
+                        fprintf(stderr, "The packet doesn't have SYN, and no tcp connection in the nat!\n");
+                        return;
+                    }
+                }
+                tcp_con->last_updated = time(NULL);
+
+                /* update tcp_con state based on tcp state transition */
+                tcp_state_transition(tcp_hdr, ip_hdr, tcp_con, 1);
+
                 /* modify ip */
                 ip_hdr->ip_src = nat_lookup->ip_ext;
                 ip_hdr->ip_ttl--;
@@ -471,6 +492,30 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 pseudo_header->zero = 0;
                 pseudo_header->ip_p = ip_protocol_tcp;
                 pseudo_header->len = len - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t);
+                /* modify the tcp header in the new header */
+                sr_tcp_hdr_t *tcp_header = (sr_tcp_hdr_t *)((char *)tcp_hdr_for_cksum + sizeof(sr_tcp_pseudo_hdr_t));
+                tcp_hdr->tcp_sum = 0;
+                memcpy(tcp_header, tcp_hdr, sizeof(sr_tcp_hdr_t));
+                /* get the tcp checksum */
+                uint16_t tcp_cksum = cksum(tcp_hdr_for_cksum);
+
+                /* modify tcp hdr */
+                tcp_hdr->tcp_sum = tcp_cksum;
+
+                /* check the arp cache */
+                struct sr_arpentry *arp_entry = sr_arpcache_lookup(&(sr->cache), longest_pref_match->gw.s_addr);
+
+                if (arp_entry) {
+                    /* modify ethernet header */
+                    memcpy(eth_hdr->ether_dhost, arp_entry->mac, ETHER_ADDR_LEN);
+                    memcpy(eth_hdr->ether_shost, out_iface->addr, ETHER_ADDR_LEN);
+                    sr_send_packet(sr, packet, len, out_iface->name);
+                    return;
+                } else {
+                    struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_dst, packet, len, out_iface->name);
+                    handle_arpreq(arp_req, sr);
+                    return;
+                }
 
 				return;
             }
@@ -550,6 +595,8 @@ void sr_handle_ippacket(struct sr_instance* sr,
             /* else if it is tcp */
             else if (ip_p == ip_protocol_tcp) {
                 fprintf(stderr, "***** -> Received TCP!\n");
+                
+                
                 
 				return;
             }
@@ -1110,50 +1157,106 @@ void tcp_state_transition(sr_tcp_hdr_t *tcp_hdr, sr_ip_hdr_t *ip_hdr,
 
     switch (tcp_hdr->tcp_state) {
         case CLOSED:
-            /* it is outbound */
-            if (isOutbound == 1 && syn && !ack) {
-                tcp_con->isn_client = seq_num;
-                tcp_con->last_updated = time(NULL);
-                tcp_con->tcp_state = SYN_SENT;
+            /* if it is outbound */
+            if (isOutbound == 1) {
+                
+                if (syn) {
+                    tcp_con->isn_client = seq_num;
+                    tcp_con->last_updated = time(NULL);
+                    tcp_con->tcp_state = SYN_SENT;
+                }
             }
             break;
 
         case SYN_SENT:
-            /* it is inbound */
-            if (isOutbound == 0 && syn && !ack) {
-                if (ack_num == (tcp_con->isn_client+1)) {
-                    tcp_con->ip_server = ip_hdr->ip_src;
-                    tcp_con->port_server = tcp_hdr->src_port;
-                    tcp_con->isn_server = seq_num;
-                    tcp_con->last_updated = time(NULL);
-                    tcp_con->tcp_state = SYN_RCVD_BEFORE;
+            /* if it is outbound */
+            if (isOutbound == 1) {
+                if (syn) {
+                    break;
+                }
+            }
+            /* if it is inbound */
+            else if (isOutbound == 0) {
+                if (syn) {
+                    if (ack_num == (tcp_con->isn_client+1)) {
+                        tcp_con->ip_server = ip_hdr->ip_src;
+                        tcp_con->port_server = tcp_hdr->src_port;
+                        tcp_con->isn_server = seq_num;
+                        tcp_con->last_updated = time(NULL);
+                        tcp_con->tcp_state = SYN_RCVD_BEFORE;
+                    }
+                }
+                else if (syn && ack) {
+                    if (ack_num == (tcp_con->isn_client+1)) {
+                        tcp_con->ip_server = ip_hdr->ip_src;
+                        tcp_con->port_server = tcp_hdr->src_port;
+                        tcp_con->isn_server = seq_num;
+                        tcp_con->last_updated = time(NULL);
+                        tcp_con->tcp_state = SYN_RCVD;
+                    }
                 }
             }
             break;
 
         case SYN_RCVD_BEFORE:
-            /* it is outbound */
-            if (isOutbound == 1 && syn && ack) {
-                if (tcp_con->ip_server == ip_hdr->ip_dst && tcp_con->port_server == tcp_hdr->dst_port 
-                    && tcp_con->isn_client == seq_num) {
-                    tcp_con->last_updated = time(NULL);
-                    tcp_con->tcp_state = SYN_RCVD;
+            /* if it is outbound */
+            if (isOutbound == 1) {
+                if (syn && ack) {
+                    if (ack_num == (tcp_con->isn_server+1)) {
+                        tcp_con->isn_client = seq_num;
+                        tcp_con->last_updated = time(NULL);
+                        tcp_con->tcp_state = SYN_RCVD;
+                    }
                 }
+            }
+            /* if it is inbound */
+            else if (isOutbound == 0) {
+
             }
             break;
 
         case SYN_RCVD:
-            /* it is inbound */
-            if (isOutbound == 0 && syn && ack) {
-                if (tcp_con->ip_server == ip_hdr->ip_src && tcp_con->port_server == tcp_hdr->src_port 
-                    && tcp_con->isn_server == seq_num) {
+            /* if it is outbound */
+            if (isOutbound == 1) {
+                if (syn && ack) {
+                    if (ack_num == (tcp_con->isn_server+1)) {
+                        tcp_con->isn_client = seq_num;
+                        tcp_con->last_updated = time(NULL);
+                        tcp_con->tcp_state = ESTAB;
+                    }
+                }
+            }
+            /* if it is inbound */
+            else if (isOutbound == 0) {
+                if (syn && ack) {
+                    if (ack_num == (tcp_con->isn_client+1)) {
+                        tcp_con->isn_server = seq_num;
+                        tcp_con->last_updated = time(NULL);
+                        tcp_con->tcp_state = ESTAB;
+                    }
+                }
+            } 
+            break;
+
+        case ESTAB:
+            /* if it is outbound */
+            if (isOutbound == 1) {
+                if (fin) {
                     tcp_con->last_updated = time(NULL);
-                    tcp_con->tcp_state = ESTAB;
+                    tcp_con->tcp_state = CLOSED;
+                }
+            }
+            /* if it is inbound */
+            else if (isOutbound == 0) {
+                if (fin) {
+                    tcp_con->last_updated = time(NULL);
+                    tcp_con->tcp_state = CLOSED;
                 }
             }
             break;
 
-        case 
+        default: 
+            break;
     }
     
 }
