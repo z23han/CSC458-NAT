@@ -276,7 +276,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
     if (sr->nat_mode) {
 
         /* ********sent to me and coming from internal ******** */
-        if ((sr_iface && strcmp(sr_con_if->name, "eth1") == 0) || (sr_iface && strcmp(sr_con_if->name, "eth2") == 0 && strcmp(sr_con_if->name, sr_iface) != 0)) {
+        if (sr_iface && strcmp(sr_con_if->name, "eth1") == 0) {
             /* ************send the packet back************ */
             /* if it is icmp */
             if (ip_p == ip_protocol_icmp) {
@@ -1121,9 +1121,39 @@ void tcp_state_transition(sr_tcp_hdr_t *tcp_hdr, sr_ip_hdr_t *ip_hdr,
         case SYN_SENT:
             /* it is inbound */
             if (isOutbound == 0 && syn && !ack) {
-                tcp_con->ip_server = ip_hdr->ip_src;
-                tcp_con->port_server = 
+                if (ack_num == (tcp_con->isn_client+1)) {
+                    tcp_con->ip_server = ip_hdr->ip_src;
+                    tcp_con->port_server = tcp_hdr->src_port;
+                    tcp_con->isn_server = seq_num;
+                    tcp_con->last_updated = time(NULL);
+                    tcp_con->tcp_state = SYN_RCVD_BEFORE;
+                }
             }
+            break;
+
+        case SYN_RCVD_BEFORE:
+            /* it is outbound */
+            if (isOutbound == 1 && syn && ack) {
+                if (tcp_con->ip_server == ip_hdr->ip_dst && tcp_con->port_server == tcp_hdr->dst_port 
+                    && tcp_con->isn_client == seq_num) {
+                    tcp_con->last_updated = time(NULL);
+                    tcp_con->tcp_state = SYN_RCVD;
+                }
+            }
+            break;
+
+        case SYN_RCVD:
+            /* it is inbound */
+            if (isOutbound == 0 && syn && ack) {
+                if (tcp_con->ip_server == ip_hdr->ip_src && tcp_con->port_server == tcp_hdr->src_port 
+                    && tcp_con->isn_server == seq_num) {
+                    tcp_con->last_updated = time(NULL);
+                    tcp_con->tcp_state = ESTAB;
+                }
+            }
+            break;
+
+        case 
     }
     
 }
