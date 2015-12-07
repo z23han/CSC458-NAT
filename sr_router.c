@@ -455,6 +455,11 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 }
                 nat_lookup->last_updated = time(NULL);
 
+                uint32_t ip_int = nat_lookup->ip_int;
+                uint32_t ip_ext = nat_lookup->ip_ext;
+                uint16_t aux_int = nat_lookup->aux_int;
+                uint16_t aux_int = nat_lookup->aux_ext;
+
                 /* find the tcp connection */
                 struct sr_nat_connection *tcp_con = sr_nat_lookup_tcp_con(nat, nat_lookup, ip_hdr->ip_dst, aux_ext);
 
@@ -486,7 +491,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 int pseudo_len = sizeof(sr_tcp_pseudo_hdr_t) + sizeof(sr_tcp_hdr_t);
                 uint8_t *tcp_hdr_for_cksum = (uint8_t *)malloc(pseudo_len);
                 /* modify pseudo header */
-				sr_tcp_pseudo_hdr_t *pseudo_header = (sr_tcp_pseudo_hdr_t *)tcp_hdr_for_cksum;
+                sr_tcp_pseudo_hdr_t *pseudo_header = (sr_tcp_pseudo_hdr_t *)tcp_hdr_for_cksum;
                 pseudo_header->ip_src = ip_hdr->ip_src;
                 pseudo_header->ip_dst = ip_hdr->ip_dst;
                 pseudo_header->zero = 0;
@@ -497,7 +502,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 tcp_hdr->tcp_sum = 0;
                 memcpy(tcp_header, tcp_hdr, sizeof(sr_tcp_hdr_t));
                 /* get the tcp checksum */
-                uint16_t tcp_cksum = cksum(tcp_hdr_for_cksum);
+                uint16_t tcp_cksum = cksum(tcp_hdr_for_cksum, pseudo_len);
 
                 /* modify tcp hdr */
                 tcp_hdr->tcp_sum = tcp_cksum;
@@ -610,6 +615,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 uint32_t ip_int = nat_lookup->ip_int;
                 uint32_t ip_ext = nat_lookup->ip_ext;
                 uint16_t aux_int = nat_lookup->aux_int;
+                uint16_t aux_ext = tcp_hdr->src_port;
                 nat_lookup->last_updated = time(NULL);
 
                 /* ckeck the dst ip equals to nat external ip */
@@ -627,9 +633,67 @@ void sr_handle_ippacket(struct sr_instance* sr,
 
                 struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
 
-                
+                /* find the tcp connection */
+                struct sr_nat_connection *tcp_con = sr_nat_lookup_tcp_con(nat, nat_lookup, ip_hdr->ip_src, aux_ext);
 
-				return;
+                /* check if the connection exists */
+                if (tcp_con == NULL) {
+                    unsigned int syn = ntohs(tcp_hdr->syn);
+                    /* if the packet has SYN, create a new tcp_con */
+                    if (syn) {
+                        tcp_con = sr_nat_insert_tcp_con(nat, nat_lookup, ip_hdr->ip_src, aux_ext);
+                    }
+                    /* otherwise drop the packet */
+                    else {
+                        fprintf(stderr, "The packet doesn't have SYN, and no tcp connection in the nat!\n");
+                        return;
+                    }
+                }
+                tcp_con->last_updated = time(NULL);
+
+                /* update tcp_con state based on tcp state transition */
+                tcp_state_transition(tcp_hdr, ip_hdr, tcp_con, 0);
+
+                /* modify ip */
+                ip_hdr->ip_dst = ip_int;
+                ip_hdr->ip_ttl--;
+                ip_hdr->ip_sum = 0;
+                ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
+
+                /* construct a new tcp with pseudo header to get the checksum */
+                int pseudo_len = sizeof(sr_tcp_pseudo_hdr_t) + sizeof(sr_tcp_hdr_t);
+                uint8_t *tcp_hdr_for_cksum = (uint8_t *)malloc(pseudo_len);
+
+                /* modify pseudo header */
+                sr_tcp_pseudo_hdr_t *pseudo_header = (sr_tcp_pseudo_hdr_t *)tcp_hdr_for_cksum;
+                pseudo_header->ip_src = ip_hdr->ip_src;
+                pseudo_header->ip_dst = ip_hdr->ip_dst;
+                pseudo_header->zero = 0;
+                pseudo_header->ip_p = ip_protocol_tcp;
+                pseudo_header->len = len - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t);
+                /* modify tcp header in the new header */
+                sr_tcp_hdr_t *tcp_header = (sr_tcp_hdr_t *)((char *)tcp_hdr_for_cksum + sizeof(sr_tcp_pseudo_hdr_t));
+                tcp_hdr->tcp_sum = 0;
+                memcpy(tcp_header, tcp_hdr, sizeof(sr_tcp_hdr_t));
+                /* get the tcp checksum */
+                uint16_t tcp_cksum = cksum(tcp_hdr_for_cksum, pseudo_len);
+
+                /* modify tcp hdr */
+                tcp_hdr->tcp_sum = tcp_cksum;
+
+                if (arp_entry) {
+                    /* modify ethernet header */
+                    memcpy(eth_hdr->ether_dhost, arp_entry->mac, ETHER_ADDR_LEN);
+                    memcpy(eth_hdr->ether_shost, out_iface->addr, ETHER_ADDR_LEN);
+                    sr_send_packet(sr, packet, len, out_iface->name);
+                    return;
+                } else {
+                    struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_dst, packet, len, out_iface->name);
+                    handle_arpreq(arp_req, sr);
+                    return;
+                }
+
+                return;
             }
             /* else drop the packet */
             else {
