@@ -560,7 +560,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
 
                     /* modify ip header */
                     ip_hdr->ip_dst = ip_int;
-					ip_hdr->ip_ttl--;
+                    ip_hdr->ip_ttl--;
                     ip_hdr->ip_sum = 0;
                     ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
 
@@ -596,8 +596,39 @@ void sr_handle_ippacket(struct sr_instance* sr,
             else if (ip_p == ip_protocol_tcp) {
                 fprintf(stderr, "***** -> Received TCP!\n");
                 
+                /* get tcp header */
+                sr_tcp_hdr_t *tcp_hdr = get_tcp_hdr(packet);
+
+                /* check external nat */
+                struct sr_nat_mapping *nat_lookup = sr_nat_lookup_external(nat, tcp_hdr->src_port, nat_mapping_tcp);
+                /* check the nat_lookup */
+                if (nat_lookup == NULL) {
+                    fprintf(stderr, "packet from external but not in the mapping! Drop the packet!\n");
+                    return;
+                }
+
+                uint32_t ip_int = nat_lookup->ip_int;
+                uint32_t ip_ext = nat_lookup->ip_ext;
+                uint16_t aux_int = nat_lookup->aux_int;
+                nat_lookup->last_updated = time(NULL);
+
+                /* ckeck the dst ip equals to nat external ip */
+                if (ip_ext != ip_hdr->ip_dst) {
+                    fprintf(stderr, "external ip is not equal to ip dst! Drop the packet!\n");
+                    return;
+                }
+
+                /* longest prefix match to find the interface */
+                struct sr_rt *longest_pref_match = sr_lpm(sr, ip_int);
+                if (longest_pref_match == NULL) {
+                    fprintf(stderr, "cannot find eth1, longest_pref_match error! Drop the packet!\n");
+                    return;
+                }
+
+                struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
+
                 
-                
+
 				return;
             }
             /* else drop the packet */
