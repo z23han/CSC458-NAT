@@ -319,7 +319,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
 
                 if (arp_entry) {
                     sr_send_packet(sr, packet, len, out_iface->name);
-					printf("sending icmp echo\n");
+                    printf("sending icmp echo\n");
                     return;
                 } else {
                     struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_dst, packet, len, out_iface->name);
@@ -1254,12 +1254,15 @@ void tcp_state_transition(sr_tcp_hdr_t *tcp_hdr, sr_ip_hdr_t *ip_hdr,
         case CLOSED:
             /* if it is outbound */
             if (isOutbound == 1) {
-                
                 if (syn) {
                     tcp_con->isn_client = seq_num;
                     tcp_con->last_updated = time(NULL);
                     tcp_con->tcp_state = SYN_SENT;
                 }
+            }
+            /* if it is inbound */
+            else if (isOutbound == 0) {
+                break;
             }
             break;
 
@@ -1306,7 +1309,7 @@ void tcp_state_transition(sr_tcp_hdr_t *tcp_hdr, sr_ip_hdr_t *ip_hdr,
             }
             /* if it is inbound */
             else if (isOutbound == 0) {
-
+                break;
             }
             break;
 
