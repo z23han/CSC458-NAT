@@ -214,20 +214,21 @@ struct sr_nat_connection *sr_nat_lookup_tcp_con(struct sr_nat *nat, struct sr_na
 
 
 /* insert a new connection associated with all the parameters */
-void sr_nat_insert_tcp_con(struct sr_nat *nat, struct sr_nat_mapping *copy, uint32_t ip_server, 
+struct sr_nat_connection *sr_nat_insert_tcp_con(struct sr_nat *nat, struct sr_nat_mapping *copy, uint32_t ip_server, 
     uint16_t port_server) {
 
     pthread_mutex_lock(&(nat->lock));
 
     struct sr_nat_mapping *currMapping = nat->mappings;
 
+	/* create a new connection */
+    struct sr_nat_connection *newConn = (struct sr_nat_connection *)malloc(sizeof(struct sr_nat_connection));
+	assert(newConn != NULL);
+
     while (currMapping) {
         if (currMapping->ip_int == copy->ip_int && currMapping->aux_int == copy->aux_int 
             && currMapping->type == nat_mapping_tcp) {
             
-            /* create a new connection */
-            struct sr_nat_connection *newConn = (struct sr_nat_connection *)malloc(sizeof(struct sr_nat_connection));
-            assert(newConn != NULL);
             /* modify all the parameters */
             newConn->ip_server = ip_server;
             newConn->port_server = port_server;
@@ -246,13 +247,12 @@ void sr_nat_insert_tcp_con(struct sr_nat *nat, struct sr_nat_mapping *copy, uint
 
     pthread_mutex_unlock(&(nat->lock));
     
-    return;
+    return newConn;
 }
 
 
 /* Destroy nat tcp connection */
 void destroy_tcp_conn(struct sr_nat *nat, struct sr_nat_mapping *copy, struct sr_nat_connection *conn) {
-    printf("[REMOVE] TCP connection!\n");
     pthread_mutex_lock(&(nat->lock));
 
     struct sr_nat_mapping *currMapping = nat->mappings;
@@ -276,7 +276,7 @@ void destroy_tcp_conn(struct sr_nat *nat, struct sr_nat_mapping *copy, struct sr
                 return;
             }
 
-            struct sr_nat_connection *nextConn = currMapping->next;
+            struct sr_nat_connection *nextConn = currConn->next;
 
             /* else loop through until we find the connection */
             while (nextConn) {

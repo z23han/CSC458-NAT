@@ -458,7 +458,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 uint32_t ip_int = nat_lookup->ip_int;
                 uint32_t ip_ext = nat_lookup->ip_ext;
                 uint16_t aux_int = nat_lookup->aux_int;
-                uint16_t aux_int = nat_lookup->aux_ext;
+                uint16_t aux_ext = nat_lookup->aux_ext;
 
                 /* find the tcp connection */
                 struct sr_nat_connection *tcp_con = sr_nat_lookup_tcp_con(nat, nat_lookup, ip_hdr->ip_dst, aux_ext);
@@ -680,6 +680,9 @@ void sr_handle_ippacket(struct sr_instance* sr,
 
                 /* modify tcp hdr */
                 tcp_hdr->tcp_sum = tcp_cksum;
+
+				/* check the arp cache */
+				struct sr_arpentry *arp_entry = sr_arpcache_lookup(&(sr->cache), longest_pref_match->gw.s_addr);
 
                 if (arp_entry) {
                     /* modify ethernet header */
@@ -1250,7 +1253,7 @@ void tcp_state_transition(sr_tcp_hdr_t *tcp_hdr, sr_ip_hdr_t *ip_hdr,
     uint32_t ack_num = ntohs(tcp_hdr->ack_num);
     uint32_t seq_num = ntohs(tcp_hdr->seq_num);
 
-    switch (tcp_hdr->tcp_state) {
+    switch (tcp_con->tcp_state) {
         case CLOSED:
             /* if it is outbound */
             if (isOutbound == 1) {
