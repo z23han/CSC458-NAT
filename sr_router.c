@@ -330,6 +330,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
             /* else if it is tcp */
             else if (ip_p == ip_protocol_tcp) {
                 fprintf(stderr, "***** -> Received TCP!\n");
+
                 /* send a icmp type 3 port unreachable (code = 3) */
 
                 /* get the longest prefix match */
@@ -343,7 +344,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
 
                 int packet_len = ICMP_T3_PACKET_LEN;
-                uint8_t *icmp_t3_hdr = (uint8_t *)malloc(sizeof(packet_len));
+                uint8_t *icmp_t3_hdr = (uint8_t *)malloc(packet_len);
 
                 /* create ethernet header */
                 create_ethernet_hdr(eth_hdr, (sr_ethernet_hdr_t *)icmp_t3_hdr, out_iface);
@@ -355,6 +356,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 create_icmp_t3_hdr(ip_hdr, (sr_icmp_t3_hdr_t *)((char *)icmp_t3_hdr+IP_PACKET_LEN), 3, 3);
 
                 /* check arp cache */
+
                 struct sr_arpentry *arp_entry = sr_arpcache_lookup(&(sr->cache), longest_pref_match->gw.s_addr);
 
                 if (arp_entry) {
@@ -365,6 +367,8 @@ void sr_handle_ippacket(struct sr_instance* sr,
                     handle_arpreq(arp_req, sr);
                     return;
                 }
+
+				return;
 
             }
             /* else drop the packet */
@@ -829,7 +833,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                         /* Create icmp port unreachable packet */
                         /* icmp_t3 type=3, code=3 */
                         create_icmp_t3_hdr(ip_hdr, (sr_icmp_t3_hdr_t *)((char *)icmp_t3_hdr+IP_PACKET_LEN), 3, 3);
-
+print_hdrs(icmp_t3_hdr, packet_len);
                         /* Send icmp type 3 packet */
                         sr_send_packet(sr, icmp_t3_hdr, packet_len, out_iface->name);
 
