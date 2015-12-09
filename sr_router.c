@@ -404,18 +404,24 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 if (nat_lookup == NULL) {
                     nat_lookup = sr_nat_insert_mapping(nat, ip_hdr->ip_src, icmp_hdr->icmp_identifier, nat_mapping_icmp);
                     nat_lookup->ip_ext = out_iface->ip;
-                    nat_lookup->aux_ext = generate_icmp_identifier(nat);
+                    nat_lookup->aux_ext = htons(generate_icmp_identifier(nat));
                 }
                 nat_lookup->last_updated = time(NULL);
 
+				/* grab ip_int/ext and aux_int/ext from nat_lookup */
+				uint32_t ip_int = nat_lookup->ip_int;
+                uint32_t ip_ext = nat_lookup->ip_ext;
+                uint16_t aux_int = nat_lookup->aux_int;
+                uint16_t aux_ext = nat_lookup->aux_ext;
+
                 /* modify ip */
-                ip_hdr->ip_src = nat_lookup->ip_ext;
+                ip_hdr->ip_src = ip_ext;
 				ip_hdr->ip_ttl--;
                 ip_hdr->ip_sum = 0;
                 ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
 
                 /* modify icmp */
-                icmp_hdr->icmp_identifier = nat_lookup->aux_ext;
+                icmp_hdr->icmp_identifier = aux_ext;
                 unsigned int icmp_whole_size = len - IP_PACKET_LEN;
                 icmp_hdr->icmp_sum = 0;
                 icmp_hdr->icmp_sum = cksum(icmp_hdr, icmp_whole_size);
@@ -457,7 +463,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 if (nat_lookup == NULL) {
                     nat_lookup = sr_nat_insert_mapping(nat, ip_hdr->ip_src, tcp_hdr->src_port, nat_mapping_tcp);
                     nat_lookup->ip_ext = out_iface->ip;
-                    nat_lookup->aux_ext = generate_port(nat);
+                    nat_lookup->aux_ext = htons(generate_port(nat));
                 }
                 nat_lookup->last_updated = time(NULL);
 
@@ -488,7 +494,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 tcp_state_transition(tcp_hdr, ip_hdr, tcp_con, 1);
 
                 /* modify ip */
-                ip_hdr->ip_src = nat_lookup->ip_ext;
+                ip_hdr->ip_src = ip_ext;
                 ip_hdr->ip_ttl--;
                 ip_hdr->ip_sum = 0;
                 ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
@@ -511,6 +517,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 uint16_t tcp_cksum = cksum(tcp_hdr_for_cksum, pseudo_len);
 
                 /* modify tcp hdr */
+				tcp_hdr->src_port = aux_ext;
                 tcp_hdr->tcp_sum = tcp_cksum;
 
                 /* check the arp cache */
@@ -547,61 +554,61 @@ void sr_handle_ippacket(struct sr_instance* sr,
 
                 struct sr_nat_mapping *nat_lookup = sr_nat_lookup_external(nat, icmp_hdr->icmp_identifier, nat_mapping_icmp);
                 /* check the nat_lookup */
-                if (nat_lookup != NULL) {
-                    /* Update nat */
-                    uint32_t ip_int = nat_lookup->ip_int;
-                    uint32_t ip_ext = nat_lookup->ip_ext;
-                    uint16_t aux_int = nat_lookup->aux_int;
-                    nat_lookup->last_updated = time(NULL);
+				if (nat_lookup == NULL) {
+					fprintf(stderr, "packet from external but not in the mapping! Drop the packet!\n");
+                    return;
+				}
 
-                    /* check the dst ip equals to nat external ip */
-                    if (ip_ext != ip_hdr->ip_dst) {
-                        fprintf(stderr, "external ip is not equal to ip dst! Drop the packet!\n");
-                        return;
-                    }
+                /* Update nat */
+                nat_lookup->last_updated = time(NULL);
 
-                    /* longest prefix match to find the interface */
-                    struct sr_rt *longest_pref_match = sr_lpm(sr, ip_int);
-                    if (longest_pref_match == NULL) {
-                        fprintf(stderr, "cannot find eth1, longest_pref_match error! Drop the packet!\n");
-                        return;
-                    }
+				uint32_t ip_int = nat_lookup->ip_int;
+                uint32_t ip_ext = nat_lookup->ip_ext;
+                uint16_t aux_int = nat_lookup->aux_int;
+                uint16_t aux_ext = nat_lookup->aux_ext;
 
-                    struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
-
-                    /* modify ip header */
-                    ip_hdr->ip_dst = ip_int;
-                    ip_hdr->ip_ttl--;
-                    ip_hdr->ip_sum = 0;
-                    ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
-
-                    /* modify icmp */
-                    icmp_hdr->icmp_identifier = aux_int;
-                    unsigned int icmp_whole_size = len - IP_PACKET_LEN;
-                    icmp_hdr->icmp_sum = 0;
-                    icmp_hdr->icmp_sum = cksum(icmp_hdr, icmp_whole_size);
-
-                    /* check the arp cache */
-                    struct sr_arpentry *arp_entry = sr_arpcache_lookup(&(sr->cache), longest_pref_match->gw.s_addr);
-
-                    if (arp_entry) {
-                        /* modify ethernet header */
-                        memcpy(eth_hdr->ether_dhost, arp_entry->mac, ETHER_ADDR_LEN);
-                        memcpy(eth_hdr->ether_shost, out_iface->addr, ETHER_ADDR_LEN);
-                        sr_send_packet(sr, packet, len, out_iface->name);
-                        return;
-                    } else {
-                        struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_dst, packet, len, out_iface->name);
-                        handle_arpreq(arp_req, sr);
-                        return;
-                    }
-                } 
-                /* if not in the mapping, drop the packet! */
-                else {
-                    fprintf(stderr, "packet from external but not in the mapping! Drop the packet!\n");
+                /* check the dst ip equals to nat external ip */
+                if (ip_ext != ip_hdr->ip_dst) {
+                    fprintf(stderr, "external ip is not equal to ip dst! Drop the packet!\n");
                     return;
                 }
- 
+
+                /* longest prefix match to find the interface */
+                struct sr_rt *longest_pref_match = sr_lpm(sr, ip_int);
+                if (longest_pref_match == NULL) {
+                    fprintf(stderr, "cannot find eth1, longest_pref_match error! Drop the packet!\n");
+                    return;
+                }
+
+                struct sr_if *out_iface = sr_get_interface(sr, longest_pref_match->interface);
+
+                /* modify ip header */
+                ip_hdr->ip_dst = ip_int;
+                ip_hdr->ip_ttl--;
+                ip_hdr->ip_sum = 0;
+                ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
+
+                /* modify icmp */
+                icmp_hdr->icmp_identifier = aux_int;
+                unsigned int icmp_whole_size = len - IP_PACKET_LEN;
+                icmp_hdr->icmp_sum = 0;
+                icmp_hdr->icmp_sum = cksum(icmp_hdr, icmp_whole_size);
+
+                /* check the arp cache */
+                struct sr_arpentry *arp_entry = sr_arpcache_lookup(&(sr->cache), longest_pref_match->gw.s_addr);
+
+                if (arp_entry) {
+                    /* modify ethernet header */
+                    memcpy(eth_hdr->ether_dhost, arp_entry->mac, ETHER_ADDR_LEN);
+                    memcpy(eth_hdr->ether_shost, out_iface->addr, ETHER_ADDR_LEN);
+                    sr_send_packet(sr, packet, len, out_iface->name);
+                    return;
+                } else {
+                    struct sr_arpreq *arp_req = sr_arpcache_queuereq(sr_arp_cache, ip_hdr->ip_dst, packet, len, out_iface->name);
+                    handle_arpreq(arp_req, sr);
+                    return;
+                }
+
             }
             /* else if it is tcp */
             else if (ip_p == ip_protocol_tcp) {
@@ -611,7 +618,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 sr_tcp_hdr_t *tcp_hdr = get_tcp_hdr(packet);
 
                 /* check external nat */
-                struct sr_nat_mapping *nat_lookup = sr_nat_lookup_external(nat, tcp_hdr->src_port, nat_mapping_tcp);
+                struct sr_nat_mapping *nat_lookup = sr_nat_lookup_external(nat, tcp_hdr->dst_port, nat_mapping_tcp);
                 /* check the nat_lookup */
                 if (nat_lookup == NULL) {
                     fprintf(stderr, "packet from external but not in the mapping! Drop the packet!\n");
@@ -621,7 +628,8 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 uint32_t ip_int = nat_lookup->ip_int;
                 uint32_t ip_ext = nat_lookup->ip_ext;
                 uint16_t aux_int = nat_lookup->aux_int;
-                uint16_t aux_ext = tcp_hdr->src_port;
+                uint16_t aux_ext = tcp_hdr->dst_port;
+
                 nat_lookup->last_updated = time(NULL);
 
                 /* ckeck the dst ip equals to nat external ip */
@@ -685,6 +693,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 uint16_t tcp_cksum = cksum(tcp_hdr_for_cksum, pseudo_len);
 
                 /* modify tcp hdr */
+				tcp_hdr->dst_port = aux_int;
                 tcp_hdr->tcp_sum = tcp_cksum;
 
 				/* check the arp cache */

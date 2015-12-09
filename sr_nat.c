@@ -189,8 +189,8 @@ struct sr_nat_connection *sr_nat_lookup_tcp_con(struct sr_nat *nat, struct sr_na
 
     /* find the mapping */
     while (currMapping != NULL) {
-        if (currMapping->ip_int == copy->ip_int && currMapping->aux_int == copy->aux_int 
-            && currMapping->type == nat_mapping_tcp) {
+        if (currMapping->ip_int == copy->ip_int && currMapping->aux_int == copy->aux_int && currMapping->ip_ext == copy->ip_ext 
+            && currMapping->aux_ext == copy->aux_ext && currMapping->type == nat_mapping_tcp) {
 
             struct sr_nat_connection *currConn = currMapping->conns;
 
@@ -225,8 +225,8 @@ struct sr_nat_connection *sr_nat_insert_tcp_con(struct sr_nat *nat, struct sr_na
 	assert(newConn != NULL);
 
     while (currMapping) {
-        if (currMapping->ip_int == copy->ip_int && currMapping->aux_int == copy->aux_int 
-            && currMapping->type == nat_mapping_tcp) {
+        if (currMapping->ip_int == copy->ip_int && currMapping->aux_int == copy->aux_int && currMapping->ip_ext == copy->ip_ext 
+            && currMapping->aux_ext == copy->aux_ext && currMapping->type == nat_mapping_tcp) {
             
             /* modify all the parameters */
             newConn->ip_server = ip_server;
