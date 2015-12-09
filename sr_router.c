@@ -355,8 +355,10 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 /* create icmp t3 port unreachable */
                 create_icmp_t3_hdr(ip_hdr, (sr_icmp_t3_hdr_t *)((char *)icmp_t3_hdr+IP_PACKET_LEN), 3, 3);
 
-                /* check arp cache */
+				sr_send_packet(sr, icmp_t3_hdr, packet_len, out_iface->name);
 
+                /* check arp cache */
+/*
                 struct sr_arpentry *arp_entry = sr_arpcache_lookup(&(sr->cache), longest_pref_match->gw.s_addr);
 
                 if (arp_entry) {
@@ -367,7 +369,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                     handle_arpreq(arp_req, sr);
                     return;
                 }
-
+*/
 				return;
 
             }
@@ -833,7 +835,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
                         /* Create icmp port unreachable packet */
                         /* icmp_t3 type=3, code=3 */
                         create_icmp_t3_hdr(ip_hdr, (sr_icmp_t3_hdr_t *)((char *)icmp_t3_hdr+IP_PACKET_LEN), 3, 3);
-print_hdrs(icmp_t3_hdr, packet_len);
+
                         /* Send icmp type 3 packet */
                         sr_send_packet(sr, icmp_t3_hdr, packet_len, out_iface->name);
 
@@ -1110,7 +1112,6 @@ void create_icmp_hdr(sr_icmp_hdr_t *icmp_hdr, sr_icmp_hdr_t *new_icmp_hdr, unsig
     new_icmp_hdr->icmp_sum = 0;
     memcpy(new_icmp_hdr+sizeof(sr_icmp_hdr_t), icmp_hdr+sizeof(sr_icmp_hdr_t), icmp_whole_size-sizeof(sr_icmp_hdr_t));
     new_icmp_hdr->icmp_sum = cksum(new_icmp_hdr, icmp_whole_size);
-    print_hdr_icmp((uint8_t*)new_icmp_hdr);
     return;
 }
 
@@ -1128,7 +1129,6 @@ void create_icmp_t3_hdr(sr_ip_hdr_t *ip_hdr, sr_icmp_t3_hdr_t *icmp_t3_hdr, uint
     icmp_t3_hdr->icmp_sum = 0;
     uint16_t checksum = cksum(icmp_t3_hdr, sizeof(sr_icmp_t3_hdr_t));
     icmp_t3_hdr->icmp_sum = checksum;
-    print_hdr_icmp((uint8_t*)icmp_t3_hdr);
     return;
 }
 

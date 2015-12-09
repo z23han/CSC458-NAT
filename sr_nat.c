@@ -191,14 +191,13 @@ struct sr_nat_connection *sr_nat_lookup_tcp_con(struct sr_nat *nat, struct sr_na
     while (currMapping != NULL) {
         if (currMapping->ip_int == copy->ip_int && currMapping->aux_int == copy->aux_int 
             && currMapping->type == nat_mapping_tcp) {
-            
+
             struct sr_nat_connection *currConn = currMapping->conns;
 
             /* find the connection */
             while (currConn) {
                 if (currConn->ip_server == ip_server && currConn->port_server == port_server) {
                     pthread_mutex_unlock(&(nat->lock));
-
                     return currConn;
                 }
                 currConn = currConn->next;
