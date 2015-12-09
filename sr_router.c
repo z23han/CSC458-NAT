@@ -1278,7 +1278,13 @@ void tcp_state_transition(sr_tcp_hdr_t *tcp_hdr, sr_ip_hdr_t *ip_hdr,
             }
             /* if it is inbound */
             else if (isOutbound == 0) {
-                break;
+				if (syn) {
+					tcp_con->ip_server = ip_hdr->ip_src;
+					tcp_con->port_server = tcp_hdr->src_port;
+					tcp_con->isn_server = seq_num;
+					tcp_con->last_updated = time(NULL);
+					tcp_con->tcp_state = SYN_SENT;
+				}
             }
             break;
 
@@ -1286,21 +1292,14 @@ void tcp_state_transition(sr_tcp_hdr_t *tcp_hdr, sr_ip_hdr_t *ip_hdr,
             /* if it is outbound */
             if (isOutbound == 1) {
                 if (syn) {
-                    break;
+					tcp_con->isn_client = seq_num;
+					tcp_con->last_updated = time(NULL);
+					tcp_con->tcp_state = SYN_RCVD_BEFORE;
                 }
             }
             /* if it is inbound */
             else if (isOutbound == 0) {
-                if (syn) {
-                    if (ack_num == (tcp_con->isn_client+1)) {
-                        tcp_con->ip_server = ip_hdr->ip_src;
-                        tcp_con->port_server = tcp_hdr->src_port;
-                        tcp_con->isn_server = seq_num;
-                        tcp_con->last_updated = time(NULL);
-                        tcp_con->tcp_state = SYN_RCVD_BEFORE;
-                    }
-                }
-                else if (syn && ack) {
+				if (syn && ack) {
                     if (ack_num == (tcp_con->isn_client+1)) {
                         tcp_con->ip_server = ip_hdr->ip_src;
                         tcp_con->port_server = tcp_hdr->src_port;
@@ -1309,13 +1308,22 @@ void tcp_state_transition(sr_tcp_hdr_t *tcp_hdr, sr_ip_hdr_t *ip_hdr,
                         tcp_con->tcp_state = SYN_RCVD;
                     }
                 }
+                else if (syn) {
+                    if (ack_num == (tcp_con->isn_client+1)) {
+                        tcp_con->ip_server = ip_hdr->ip_src;
+                        tcp_con->port_server = tcp_hdr->src_port;
+                        tcp_con->isn_server = seq_num;
+                        tcp_con->last_updated = time(NULL);
+                        tcp_con->tcp_state = SYN_RCVD_BEFORE;
+                    }
+                }
             }
             break;
 
         case SYN_RCVD_BEFORE:
             /* if it is outbound */
             if (isOutbound == 1) {
-                if (syn && ack) {
+                if (ack) {
                     if (ack_num == (tcp_con->isn_server+1)) {
                         tcp_con->isn_client = seq_num;
                         tcp_con->last_updated = time(NULL);
@@ -1325,14 +1333,20 @@ void tcp_state_transition(sr_tcp_hdr_t *tcp_hdr, sr_ip_hdr_t *ip_hdr,
             }
             /* if it is inbound */
             else if (isOutbound == 0) {
-                break;
+				if (ack) {
+					if (ack_num == (tcp_con->isn_client+1)) {
+						tcp_con->isn_server = seq_num;
+						tcp_con->last_updated = time(NULL);
+						tcp_con->tcp_state = SYN_RCVD;
+					}
+				}
             }
             break;
 
         case SYN_RCVD:
             /* if it is outbound */
             if (isOutbound == 1) {
-                if (syn && ack) {
+                if (ack) {
                     if (ack_num == (tcp_con->isn_server+1)) {
                         tcp_con->isn_client = seq_num;
                         tcp_con->last_updated = time(NULL);
@@ -1342,7 +1356,7 @@ void tcp_state_transition(sr_tcp_hdr_t *tcp_hdr, sr_ip_hdr_t *ip_hdr,
             }
             /* if it is inbound */
             else if (isOutbound == 0) {
-                if (syn && ack) {
+                if (ack) {
                     if (ack_num == (tcp_con->isn_client+1)) {
                         tcp_con->isn_server = seq_num;
                         tcp_con->last_updated = time(NULL);
