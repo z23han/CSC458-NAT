@@ -79,7 +79,7 @@ struct sr_tcp_unsolicited_packet {
 };
 
 
-int   sr_nat_init(struct sr_nat *nat);     /* Initializes the nat */
+int   sr_nat_init(struct sr_instance *sr, struct sr_nat *nat);     /* Initializes the nat */
 int   sr_nat_destroy(struct sr_nat *nat);  /* Destroys the nat (free memory) */
 void *sr_nat_timeout(void *nat_ptr);  /* Periodic Timout */
 

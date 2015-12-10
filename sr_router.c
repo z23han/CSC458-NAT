@@ -50,7 +50,7 @@ void sr_init(struct sr_instance* sr)
     pthread_create(&thread, &(sr->attr), sr_arpcache_timeout, sr);
     
     /* Add initialization code here! */
-    if (sr_nat_init(sr->nat) != 0) {
+    if (sr_nat_init(sr, sr->nat) != 0) {
         fprintf(stderr, "nat initialization error!\n");
         return;
     }

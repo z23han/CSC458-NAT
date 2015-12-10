@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include "sr_router.h"
 
-int sr_nat_init(struct sr_nat *nat) { /* Initializes the nat */
+int sr_nat_init(struct sr_instance *sr, struct sr_nat *nat) { /* Initializes the nat */
 
   assert(nat);
 
@@ -22,7 +22,7 @@ int sr_nat_init(struct sr_nat *nat) { /* Initializes the nat */
   pthread_attr_setdetachstate(&(nat->thread_attr), PTHREAD_CREATE_JOINABLE);
   pthread_attr_setscope(&(nat->thread_attr), PTHREAD_SCOPE_SYSTEM);
   pthread_attr_setscope(&(nat->thread_attr), PTHREAD_SCOPE_SYSTEM);
-  pthread_create(&(nat->thread), &(nat->thread_attr), sr_nat_timeout, nat);
+  pthread_create(&(nat->thread), &(nat->thread_attr), sr_nat_timeout, sr);
 
   /* CAREFUL MODIFYING CODE ABOVE THIS LINE! */
 
@@ -48,15 +48,132 @@ int sr_nat_destroy(struct sr_nat *nat) {  /* Destroys the nat (free memory) */
 
 }
 
-void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
-  struct sr_nat *nat = (struct sr_nat *)nat_ptr;
+void *sr_nat_timeout(struct sr_instance *sr) {  /* Periodic Timout handling */
+  struct sr_nat *nat = sr->nat;
   while (1) {
     sleep(1.0);
     pthread_mutex_lock(&(nat->lock));
 
     /* handle periodic tasks here */
 	time_t curtime = time(NULL);
+
+	struct sr_tcp_unsolicited_packet *my_pkt = nat->unsolicited_packet;
+	/* if my_pkt is NULL, finish! */
+	if (my_pkt == NULL) {
+		pthread_mutex_unlock(&(nat->lock));
+	}
+	/* else, get the next pkt */
+	else {
+
+		time_t pkt_time = my_pkt->time_updated;
+
+		/* if the time difference is bigger than 6 seconds */
+		if (difftime(curtime, pkt_time) >= 6) {
+			/* get all the headers */
+			uint8_t *packet = my_pkt->buf;
+			sr_ethernet_hdr_t *eth_hdr = get_eth_hdr(packet);
+			sr_ip_hdr_t *ip_hdr = get_ip_hdr(packet);
+
+			/* create a new icmp t3 port unreachable */
+			int packet_len = ICMP_T3_PACKET_LEN;
+			uint8_t *icmp_t3_hdr = (uint8_t *)malloc(packet_len);
+			/* create ethernet header */
+			sr_ethernet_hdr_t *new_eth_hdr = (sr_ethernet_hdr_t *)icmp_t3_hdr;
+			memcpy(new_eth_hdr->ether_dhost, eth_hdr->ether_shost, ETHER_ADDR_LEN);
+			memcpy(new_eth_hdr->ether_shost, eth_hdr->ether_dhost, ETHER_ADDR_LEN);
+			/* create ip header */
+			sr_ip_hdr_t *new_ip_hdr = (sr_ip_hdr_t *)((char *)icmp_t3_hdr + ETHER_PACKET_LEN);
+			new_ip_hdr->ip_hl = ip_hdr->ip_hl;          /* header length */
+			new_ip_hdr->ip_v = ip_hdr->ip_v;            /* header version */
+			new_ip_hdr->ip_tos = ip_hdr->ip_tos;        /* type of service */
+			new_ip_hdr->ip_len = htons(56); 			/* total length */
+			new_ip_hdr->ip_id = 0; 				/* identification */
+			new_ip_hdr->ip_off = htons(0b0100000000000000);        /* fragment offset field */
+			new_ip_hdr->ip_ttl = 64;                    /* time to live */
+			new_ip_hdr->ip_p = ip_protocol_icmp;            /* protocol */
+			new_ip_hdr->ip_src =  ip_hdr->ip_dst;		/* source address */
+			new_ip_hdr->ip_dst = ip_hdr->ip_src;        /* dest address */
+			new_ip_hdr->ip_sum = 0;
+			new_ip_hdr->ip_sum = cksum(new_ip_hdr, sizeof(sr_ip_hdr_t));;   /* checksum */
+			/* create icmp t3 header */
+			sr_icmp_t3_hdr_t *new_icmp_t3_hdr = (sr_icmp_t3_hdr_t *)((char *)icmp_t3_hdr + IP_PACKET_LEN);
+			new_icmp_t3_hdr->icmp_type = htons(3);
+			new_icmp_t3_hdr->icmp_code = htons(3);
+			new_icmp_t3_hdr->unused = 0;
+			new_icmp_t3_hdr->next_mtu = 0;
+			memcpy(new_icmp_t3_hdr->data, new_ip_hdr, ICMP_DATA_SIZE); 
+			new_icmp_t3_hdr->icmp_sum = 0;
+			new_icmp_t3_hdr->icmp_sum = cksum(new_icmp_t3_hdr, sizeof(sr_icmp_t3_hdr_t));
+
+			struct sr_if *out_iface = sr_get_router_if(sr, ip_hdr->ip_dst);
+
+			/* get the next packet */
+			struct sr_tcp_unsolicited_packet *next_pkt = my_pkt->next;
+
+		/* if next_pkt is NULL, simply check my_pkt */
+		if (next_pkt == NULL) {
+
+				sr_send_packet(sr, icmp_t3_hdr, packet_len, out_iface->name);
+				/* set it to be NULL */
+				nat->unsolicited_packet = NULL;
+		}
+		/* -----------else, we loop through the pkts, and do prev, cur, next */
+		else {
+			struct sr_tcp_unsolicited_packet *next_next_pkt = next_pkt->next;
+		}
+	}
+	struct sr_tcp_unsolicited_packet *prev_pkt = my_pkt;
 	
+	
+	/* loop through all the unsolicited packets stored and check if the time is ready */
+	while (my_pkt != NULL) {
+
+		time_t pkt_time = my_pkt->time_updated;
+
+		/* if the time difference is bigger than 6 seconds */
+		if (difftime(curtime, pkt_time) >= 6) {
+			/* get all the headers */
+			uint8_t *packet = my_pkt->buf;
+			sr_ethernet_hdr_t *eth_hdr = get_eth_hdr(packet);
+			sr_ip_hdr_t *ip_hdr = get_ip_hdr(packet);
+
+			/* create a new icmp t3 port unreachable */
+			int packet_len = ICMP_T3_PACKET_LEN;
+			uint8_t *icmp_t3_hdr = (uint8_t *)malloc(packet_len);
+			/* create ethernet header */
+			sr_ethernet_hdr_t *new_eth_hdr = (sr_ethernet_hdr_t *)icmp_t3_hdr;
+			memcpy(new_eth_hdr->ether_dhost, eth_hdr->ether_shost, ETHER_ADDR_LEN);
+			memcpy(new_eth_hdr->ether_shost, eth_hdr->ether_dhost, ETHER_ADDR_LEN);
+			/* create ip header */
+			sr_ip_hdr_t *new_ip_hdr = (sr_ip_hdr_t *)((char *)icmp_t3_hdr + ETHER_PACKET_LEN);
+			new_ip_hdr->ip_hl = ip_hdr->ip_hl;          /* header length */
+    		new_ip_hdr->ip_v = ip_hdr->ip_v;            /* header version */
+    		new_ip_hdr->ip_tos = ip_hdr->ip_tos;        /* type of service */
+    		new_ip_hdr->ip_len = htons(56); 			/* total length */
+    		new_ip_hdr->ip_id = 0; 				/* identification */
+    		new_ip_hdr->ip_off = htons(0b0100000000000000);        /* fragment offset field */
+    		new_ip_hdr->ip_ttl = 64;                    /* time to live */
+    		new_ip_hdr->ip_p = ip_protocol_icmp;            /* protocol */
+    		new_ip_hdr->ip_src =  ip_hdr->ip_dst;		/* source address */
+    		new_ip_hdr->ip_dst = ip_hdr->ip_src;        /* dest address */
+    		new_ip_hdr->ip_sum = 0;
+    		new_ip_hdr->ip_sum = cksum(new_ip_hdr, sizeof(sr_ip_hdr_t));;   /* checksum */
+			/* create icmp t3 header */
+			sr_icmp_t3_hdr_t *new_icmp_t3_hdr = (sr_icmp_t3_hdr_t *)((char *)icmp_t3_hdr + IP_PACKET_LEN);
+			new_icmp_t3_hdr->icmp_type = htons(3);
+    		new_icmp_t3_hdr->icmp_code = htons(3);
+    		new_icmp_t3_hdr->unused = 0;
+    		new_icmp_t3_hdr->next_mtu = 0;
+    		memcpy(new_icmp_t3_hdr->data, new_ip_hdr, ICMP_DATA_SIZE); 
+    		new_icmp_t3_hdr->icmp_sum = 0;
+    		new_icmp_t3_hdr->icmp_sum = cksum(new_icmp_t3_hdr, sizeof(sr_icmp_t3_hdr_t));
+
+			struct sr_if *out_iface = sr_get_router_if(sr, ip_hdr->ip_dst);
+
+			sr_send_packet(sr, icmp_t3_hdr, packet_len, out_iface->name);
+			
+		}
+	}
 
     pthread_mutex_unlock(&(nat->lock));
   }
@@ -304,14 +421,24 @@ void destroy_tcp_conn(struct sr_nat *nat, struct sr_nat_mapping *copy, struct sr
 struct sr_arpreq *sr_nat_unsolicited_queue(struct sr_nat *nat, uint8_t *packet, unsigned int packet_len) {
     pthread_mutex_lock(&(nat->lock));
     
+	/* get ethernet header, ip header, tcp header */
+	sr_ethernet_hdr_t *eth_hdr = get_eth_hdr(packet);
+	sr_ip_hdr_t *ip_hdr = get_ip_hdr(packet);
+	sr_tcp_hdr_t *tcp_hdr = get_tcp_hdr(packet);
+
     struct sr_tcp_unsolicited_packet *my_pkt = NULL;
-	sr_tcp_hdr_t *input_pkt = (sr_tcp_hdr_t *)packet;
 
 	int found = 0;
 
     for (my_pkt = nat->unsolicited_packet; my_pkt != NULL; my_pkt = my_pkt->next) {
-		sr_tcp_hdr_t *tcp_pkt = (sr_tcp_hdr_t *)(my_pkt->buf);
-		if (tcp_pkt->src_port == input_pkt->src_port && tcp_pkt->dst_port == input_pkt->dst_port && tcp_pkt->seq_num == input_pkt->seq_num) {
+
+		sr_ethernet_hdr_t *my_pkt_eth_hdr = get_eth_hdr(my_pkt->buf);
+		sr_ip_hdr_t *my_pkt_ip_hdr = get_ip_hdr(my_pkt->buf);
+		sr_tcp_hdr_t *my_pkt_tcp_hdr = get_tcp_hdr(my_pkt->buf);
+		
+		/* check if the ip_src/dst and src/dst_port match */
+		if (ip_hdr->ip_src == my_pkt_ip_hdr->ip_src && ip_hdr->ip_dst == my_pkt_ip_hdr->ip_dst 
+		&& tcp_hdr->src_port == my_pkt_tcp_hdr->src_port && tcp_hdr->dst_port == my_pkt_tcp_hdr->dst_port) {
 			found = 1;
 			break;
 		}
