@@ -377,7 +377,7 @@ void sr_handle_ippacket(struct sr_instance* sr,
             else {
                 fprintf(stderr, "Not an icmp or tcp packet! Drop the packet!\n");
                 return;
-            }
+            }					
         }
         /* ********not sent to me and is coming from internal******** */
         /* ************check the nat and forward the packet************ */
@@ -474,6 +474,27 @@ void sr_handle_ippacket(struct sr_instance* sr,
 
                 /* find the tcp connection */
                 struct sr_nat_connection *tcp_con = sr_nat_lookup_tcp_con(nat, nat_lookup, ip_hdr->ip_dst, aux_ext);
+
+				/* check if the port number is between 0~1023 */
+				if (tcp_con != NULL && ntohs(tcp_con->port_server) >= 0 && ntohs(tcp_con->port_server) <= 1023) {
+					fprintf(stderr, "port number between 0 and 1023. Drop the packet!\n");
+
+					/* construct a icmp t3 port unreachable packet and send it back */
+					int packet_len = ICMP_T3_PACKET_LEN;
+                	uint8_t *icmp_t3_hdr = (uint8_t *)malloc(packet_len);
+
+                	/* create ethernet header */
+                	create_ethernet_hdr(eth_hdr, (sr_ethernet_hdr_t *)icmp_t3_hdr, sr_con_if);
+
+                	/* create ip header */
+                	create_echo_ip_hdr(ip_hdr, (sr_ip_hdr_t *)((char *)icmp_t3_hdr+ETHER_PACKET_LEN), sr_con_if);
+
+                	/* create icmp t3 port unreachable */
+                	create_icmp_t3_hdr(ip_hdr, (sr_icmp_t3_hdr_t *)((char *)icmp_t3_hdr+IP_PACKET_LEN), 3, 3);
+
+					sr_send_packet(sr, icmp_t3_hdr, packet_len, sr_con_if->name);
+					return;
+				}
 
                 /* check if the connection exist*/
                 if (tcp_con == NULL) {
@@ -650,6 +671,27 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 /* find the tcp connection */
                 struct sr_nat_connection *tcp_con = sr_nat_lookup_tcp_con(nat, nat_lookup, ip_hdr->ip_src, aux_ext);
 
+				/* check if the port number is between 0~1023 */
+				if (tcp_con != NULL && ntohs(tcp_con->port_server) >= 0 && ntohs(tcp_con->port_server) <= 1023) {
+					fprintf(stderr, "port number between 0 and 1023. Drop the packet!\n");
+
+					/* construct a icmp t3 port unreachable packet and send it back */
+					int packet_len = ICMP_T3_PACKET_LEN;
+                	uint8_t *icmp_t3_hdr = (uint8_t *)malloc(packet_len);
+
+                	/* create ethernet header */
+                	create_ethernet_hdr(eth_hdr, (sr_ethernet_hdr_t *)icmp_t3_hdr, sr_con_if);
+
+                	/* create ip header */
+                	create_echo_ip_hdr(ip_hdr, (sr_ip_hdr_t *)((char *)icmp_t3_hdr+ETHER_PACKET_LEN), sr_con_if);
+
+                	/* create icmp t3 port unreachable */
+                	create_icmp_t3_hdr(ip_hdr, (sr_icmp_t3_hdr_t *)((char *)icmp_t3_hdr+IP_PACKET_LEN), 3, 3);
+
+					sr_send_packet(sr, icmp_t3_hdr, packet_len, sr_con_if->name);
+					return;
+				}
+
                 /* check if the connection exists */
                 if (tcp_con == NULL) {
                     unsigned int syn = ntohs(tcp_hdr->syn);
@@ -728,7 +770,6 @@ void sr_handle_ippacket(struct sr_instance* sr,
     }
     /* ******************** a1 part ********************** */
     else {
-
         /* If the packet is sent to self, meaning the ip is sent to the router */
         if (sr_iface) {
             /* Check the protocol if it is icmp */
@@ -1176,7 +1217,9 @@ struct sr_rt *sr_lpm(struct sr_instance *sr, uint32_t ip_dst) {
             if (len < routing_table->mask.s_addr) { /* routing_table->dest.s_addr & routing_table->mask.s_addr) { */
                 len = routing_table->mask.s_addr; /*& routing_table->mask.s_addr;*/
                 lpm_rt = routing_table;
-            }
+            } else if (len == 0 && routing_table->mask.s_addr == 0) {
+				lpm_rt = routing_table;
+			}
         }
         routing_table = routing_table->next;
     }
