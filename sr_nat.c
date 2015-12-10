@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <stdlib.h>
+#include "sr_router.h"
 
 int sr_nat_init(struct sr_nat *nat) { /* Initializes the nat */
 
@@ -29,6 +30,7 @@ int sr_nat_init(struct sr_nat *nat) { /* Initializes the nat */
   /* Initialize any variables here */
   nat->port_counter = MIN_PORT;
   nat->identifier_counter = MIN_ICMP_IDENTIFIER;
+	nat->unsolicited_packet = NULL;
 
   return success;
 }
@@ -52,9 +54,9 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
     sleep(1.0);
     pthread_mutex_lock(&(nat->lock));
 
-    /*time_t curtime = time(NULL);*/
-
     /* handle periodic tasks here */
+	time_t curtime = time(NULL);
+	
 
     pthread_mutex_unlock(&(nat->lock));
   }
@@ -297,3 +299,42 @@ void destroy_tcp_conn(struct sr_nat *nat, struct sr_nat_mapping *copy, struct sr
     return;
 
 }
+
+
+struct sr_arpreq *sr_nat_unsolicited_queue(struct sr_nat *nat, uint8_t *packet, unsigned int packet_len) {
+    pthread_mutex_lock(&(nat->lock));
+    
+    struct sr_tcp_unsolicited_packet *my_pkt = NULL;
+	sr_tcp_hdr_t *input_pkt = (sr_tcp_hdr_t *)packet;
+
+	int found = 0;
+
+    for (my_pkt = nat->unsolicited_packet; my_pkt != NULL; my_pkt = my_pkt->next) {
+		sr_tcp_hdr_t *tcp_pkt = (sr_tcp_hdr_t *)(my_pkt->buf);
+		if (tcp_pkt->src_port == input_pkt->src_port && tcp_pkt->dst_port == input_pkt->dst_port && tcp_pkt->seq_num == input_pkt->seq_num) {
+			found = 1;
+			break;
+		}
+    }
+    
+    /* If the packet wasn't found, add it */
+    if (found == 0) {
+		struct sr_tcp_unsolicited_packet *new_pkt = (struct sr_tcp_unsolicited_packet *)malloc(sizeof(struct sr_tcp_unsolicited_packet));
+		new_pkt->buf = (uint8_t *)malloc(packet_len);
+		memcpy(new_pkt->buf, packet, packet_len);
+		new_pkt->len = packet_len;
+		new_pkt->time_updated = time(NULL);
+		new_pkt->next = nat->unsolicited_packet;
+		nat->unsolicited_packet = new_pkt;
+		
+		pthread_mutex_unlock(&(nat->lock));
+		return new_pkt;
+    }
+    
+    pthread_mutex_unlock(&(nat->lock));
+
+	return my_pkt;
+
+}
+
+

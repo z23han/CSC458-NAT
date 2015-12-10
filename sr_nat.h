@@ -66,6 +66,16 @@ struct sr_nat {
   uint16_t port_counter;
   /* available ICMP identifier counter */
   uint16_t identifier_counter;
+
+	struct sr_tcp_unsolicited_packet *unsolicited_packet;
+};
+
+
+struct sr_tcp_unsolicited_packet {
+    uint8_t *buf;			/* used for storing unsolicited packet */
+    unsigned int len;		/* packet length */
+	time_t time_updated;	/* time when packet comes */
+    struct sr_tcp_unsolicited_packet *next;
 };
 
 
@@ -96,6 +106,7 @@ struct sr_nat_connection *sr_nat_lookup_tcp_con(struct sr_nat *nat, struct sr_na
 struct sr_nat_connection *sr_nat_insert_tcp_con(struct sr_nat *nat, struct sr_nat_mapping *copy, uint32_t ip_server, 
     uint16_t port_server);
 void destroy_tcp_conn(struct sr_nat *nat, struct sr_nat_mapping *copy, struct sr_nat_connection *conn);
+struct sr_arpreq *sr_nat_unsolicited_queue(struct sr_nat *nat, uint8_t *packet, unsigned int packet_len);
 
 
 #endif

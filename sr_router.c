@@ -347,10 +347,10 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 uint8_t *icmp_t3_hdr = (uint8_t *)malloc(packet_len);
 
                 /* create ethernet header */
-                create_ethernet_hdr(eth_hdr, (sr_ethernet_hdr_t *)icmp_t3_hdr, out_iface);
+                create_ethernet_hdr(eth_hdr, (sr_ethernet_hdr_t *)icmp_t3_hdr, sr_iface);
 
                 /* create ip header */
-                create_echo_ip_hdr(ip_hdr, (sr_ip_hdr_t *)((char *)icmp_t3_hdr+ETHER_PACKET_LEN), out_iface);
+                create_echo_ip_hdr(ip_hdr, (sr_ip_hdr_t *)((char *)icmp_t3_hdr+ETHER_PACKET_LEN), sr_iface);
 
                 /* create icmp t3 port unreachable */
                 create_icmp_t3_hdr(ip_hdr, (sr_icmp_t3_hdr_t *)((char *)icmp_t3_hdr+IP_PACKET_LEN), 3, 3);
@@ -874,10 +874,10 @@ void sr_handle_ippacket(struct sr_instance* sr,
                         uint8_t *icmp_t3_hdr = (uint8_t *)malloc(packet_len);
 
                         /* Create ethernet header */
-                        create_ethernet_hdr(eth_hdr, (sr_ethernet_hdr_t *)icmp_t3_hdr, out_iface);
+                        create_ethernet_hdr(eth_hdr, (sr_ethernet_hdr_t *)icmp_t3_hdr, sr_iface);
 
                         /* Create ip header */
-                        create_echo_ip_hdr(ip_hdr, (sr_ip_hdr_t *)((char *)icmp_t3_hdr+ETHER_PACKET_LEN), out_iface);
+                        create_echo_ip_hdr(ip_hdr, (sr_ip_hdr_t *)((char *)icmp_t3_hdr+ETHER_PACKET_LEN), sr_iface);
 
                         /* Should update source address to be interface address */
 
@@ -897,10 +897,10 @@ void sr_handle_ippacket(struct sr_instance* sr,
                         uint8_t *icmp_t3_hdr = (uint8_t *)malloc(packet_len);
 
                         /* Create ethernet header */
-                        create_ethernet_hdr(eth_hdr, (sr_ethernet_hdr_t *)icmp_t3_hdr, out_iface);
+                        create_ethernet_hdr(eth_hdr, (sr_ethernet_hdr_t *)icmp_t3_hdr, sr_iface);
 
                         /* Create ip header */
-                        create_echo_ip_hdr(ip_hdr, (sr_ip_hdr_t *)((char *)icmp_t3_hdr+ETHER_PACKET_LEN), out_iface);
+                        create_echo_ip_hdr(ip_hdr, (sr_ip_hdr_t *)((char *)icmp_t3_hdr+ETHER_PACKET_LEN), sr_iface);
 
                         /* Send icmp type 3 port unreachable */
                         /* Create icmp port unreachable packet */
