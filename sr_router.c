@@ -476,7 +476,8 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 struct sr_nat_connection *tcp_con = sr_nat_lookup_tcp_con(nat, nat_lookup, ip_hdr->ip_dst, aux_ext);
 
 				/* check if the port number is between 0~1023 */
-				if ((ntohs(aux_int) >= 0 && ntohs(aux_int) <= 1023) || (ntohs(aux_ext) >= 0 && ntohs(aux_ext) <= 1023)) {
+				if ((ntohs(tcp_hdr->dst_port) >= 0 && ntohs(tcp_hdr->dst_port) <= 1023) || (ntohs(aux_int) >= 0 && ntohs(aux_int) <= 1023) || 
+				(ntohs(aux_ext) >= 0 && ntohs(aux_ext) <= 1023)) {
 					fprintf(stderr, "port number between 0 and 1023. Send ICMP T3 packet back!\n");
 
 					/* construct a icmp t3 port unreachable packet and send it back */
@@ -672,7 +673,8 @@ void sr_handle_ippacket(struct sr_instance* sr,
                 struct sr_nat_connection *tcp_con = sr_nat_lookup_tcp_con(nat, nat_lookup, ip_hdr->ip_src, aux_ext);
 
 				/* check if the port number is between 0~1023 */
-				if ((ntohs(aux_int) >= 0 && ntohs(aux_int) <= 1023) || (ntohs(aux_ext) >= 0 && ntohs(aux_ext) <= 1023)) {
+				if ((ntohs(tcp_hdr->src_port) >= 0 && ntohs(tcp_hdr->src_port) <= 1023) || (ntohs(aux_int) >= 0 && ntohs(aux_int) <= 1023) || 
+				(ntohs(aux_ext) >= 0 && ntohs(aux_ext) <= 1023)) {
 					fprintf(stderr, "port number between 0 and 1023. Send ICMP T3 back!\n");
 
 					/* construct a icmp t3 port unreachable packet and send it back */
