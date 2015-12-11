@@ -29,5 +29,5 @@ generate_port: generate tcp port number from 1024
 
 
 /############# what's left  ####################/
-The part which has been fully implemented is unsolicited inbound packet. I have written a cache to store the inbound tcp packet and use timeout to send icmp t3 packet out to the src address. But scrutiny is still needed since it is not working correctly. 
+The part which hasn't been fully implemented is unsolicited inbound packet. I have written a cache to store the inbound tcp packet and use timeout to send icmp t3 packet out to the src address. But scrutiny is still needed since it is not working correctly. 
 
