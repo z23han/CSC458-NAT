@@ -1302,7 +1302,7 @@ sr_tcp_hdr_t *get_tcp_hdr(uint8_t *packet) {
 
 /* tcp state transition */
 void tcp_state_transition(sr_tcp_hdr_t *tcp_hdr, sr_ip_hdr_t *ip_hdr, 
-    struct sr_nat_connection *tcp_con, int isOutbound) {
+    struct sr_nat_connection *tcp_con, unsigned int isOutbound) {
     unsigned int fin = ntohs(tcp_hdr->fin);     /* no more data from sender, terminates a connection */
     unsigned int syn = ntohs(tcp_hdr->syn);     /* synchronize sequence number */
     unsigned int ack = ntohs(tcp_hdr->ack);     /* indicate acknowledge field is significant */

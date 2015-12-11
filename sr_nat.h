@@ -12,6 +12,9 @@
 #include <inttypes.h>
 #include <time.h>
 #include <pthread.h>
+#include "sr_router.h"
+#include <string.h>
+#include "sr_utils.h"
 
 typedef enum {
   nat_mapping_icmp,
@@ -81,7 +84,7 @@ struct sr_tcp_unsolicited_packet {
 
 int   sr_nat_init(struct sr_instance *sr, struct sr_nat *nat);     /* Initializes the nat */
 int   sr_nat_destroy(struct sr_nat *nat);  /* Destroys the nat (free memory) */
-void *sr_nat_timeout(void *nat_ptr);  /* Periodic Timout */
+void *sr_nat_timeout(void *sr_ptr);  /* Periodic Timout */
 
 /* Get the mapping associated with given external port.
    You must free the returned structure if it is not NULL. */
@@ -106,7 +109,7 @@ struct sr_nat_connection *sr_nat_lookup_tcp_con(struct sr_nat *nat, struct sr_na
 struct sr_nat_connection *sr_nat_insert_tcp_con(struct sr_nat *nat, struct sr_nat_mapping *copy, uint32_t ip_server, 
     uint16_t port_server);
 void destroy_tcp_conn(struct sr_nat *nat, struct sr_nat_mapping *copy, struct sr_nat_connection *conn);
-struct sr_arpreq *sr_nat_unsolicited_queue(struct sr_nat *nat, uint8_t *packet, unsigned int packet_len);
+struct sr_tcp_unsolicited_packet *sr_nat_unsolicited_queue(struct sr_nat *nat, uint8_t *packet, unsigned int packet_len);
 
 
 #endif

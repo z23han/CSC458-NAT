@@ -48,7 +48,8 @@ int sr_nat_destroy(struct sr_nat *nat) {  /* Destroys the nat (free memory) */
 
 }
 
-void *sr_nat_timeout(struct sr_instance *sr) {  /* Periodic Timout handling */
+void *sr_nat_timeout(void *sr_ptr) {  /* Periodic Timout handling */
+	struct sr_instance *sr = (struct sr_instance *)sr_ptr;
   struct sr_nat *nat = sr->nat;
   while (1) {
     sleep(1.0);
@@ -110,6 +111,8 @@ void *sr_nat_timeout(struct sr_instance *sr) {  /* Periodic Timout handling */
 
                 struct sr_if *out_iface = sr_get_router_if(sr, ip_hdr->ip_dst);
 
+				sr_send_packet(sr, icmp_t3_hdr, packet_len, out_iface->name);
+
                 /* set unsolicited_packet to be NULL */
                 nat->unsolicited_packet = NULL;
             }
@@ -160,6 +163,8 @@ void *sr_nat_timeout(struct sr_instance *sr) {  /* Periodic Timout handling */
                     new_icmp_t3_hdr->icmp_sum = cksum(new_icmp_t3_hdr, sizeof(sr_icmp_t3_hdr_t));
 
                     struct sr_if *out_iface = sr_get_router_if(sr, ip_hdr->ip_dst);
+
+					sr_send_packet(sr, icmp_t3_hdr, packet_len, out_iface->name);
 
                     /* unlist the my_pkt */
                     if (my_pkt == nat->unsolicited_packet) {
@@ -417,11 +422,11 @@ void destroy_tcp_conn(struct sr_nat *nat, struct sr_nat_mapping *copy, struct sr
 }
 
 
-struct sr_arpreq *sr_nat_unsolicited_queue(struct sr_nat *nat, uint8_t *packet, unsigned int packet_len) {
+struct sr_tcp_unsolicited_packet *sr_nat_unsolicited_queue(struct sr_nat *nat, uint8_t *packet, unsigned int packet_len) {
     pthread_mutex_lock(&(nat->lock));
     
 	/* get ethernet header, ip header, tcp header */
-	sr_ethernet_hdr_t *eth_hdr = get_eth_hdr(packet);
+	/*sr_ethernet_hdr_t *eth_hdr = get_eth_hdr(packet);*/
 	sr_ip_hdr_t *ip_hdr = get_ip_hdr(packet);
 	sr_tcp_hdr_t *tcp_hdr = get_tcp_hdr(packet);
 
@@ -431,7 +436,7 @@ struct sr_arpreq *sr_nat_unsolicited_queue(struct sr_nat *nat, uint8_t *packet, 
 
     for (my_pkt = nat->unsolicited_packet; my_pkt != NULL; my_pkt = my_pkt->next) {
 
-		sr_ethernet_hdr_t *my_pkt_eth_hdr = get_eth_hdr(my_pkt->buf);
+		/*sr_ethernet_hdr_t *my_pkt_eth_hdr = get_eth_hdr(my_pkt->buf);*/
 		sr_ip_hdr_t *my_pkt_ip_hdr = get_ip_hdr(my_pkt->buf);
 		sr_tcp_hdr_t *my_pkt_tcp_hdr = get_tcp_hdr(my_pkt->buf);
 		
